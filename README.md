@@ -62,7 +62,7 @@ The framework is designed for research into **information-freshness-aware** and 
 ## Quick Start
 
 ### Requirements
-- MATLAB R2021b or later (no additional toolboxes required)
+- MATLAB R2025b or later (no additional toolboxes required)
 
 ### Run with default config
 ```matlab
