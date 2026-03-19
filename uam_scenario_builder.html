@@ -1,0 +1,655 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-sans)}
+:root{--col-w:300px}
+.sb-root{display:flex;flex-direction:column;gap:0;min-height:600px}
+.sb-header{padding:1rem 1.25rem;border-bottom:0.5px solid var(--color-border-tertiary);display:flex;align-items:center;justify-content:space-between}
+.sb-title{font-size:15px;font-weight:500;color:var(--color-text-primary)}
+.sb-subtitle{font-size:12px;color:var(--color-text-secondary);margin-top:2px}
+.sb-body{display:flex;flex:1}
+.sb-sidebar{width:var(--col-w);border-right:0.5px solid var(--color-border-tertiary);display:flex;flex-direction:column}
+.sb-tabs{display:flex;border-bottom:0.5px solid var(--color-border-tertiary)}
+.sb-tab{flex:1;padding:8px 4px;font-size:12px;color:var(--color-text-secondary);cursor:pointer;text-align:center;border:none;background:none;border-bottom:2px solid transparent;transition:all 0.15s}
+.sb-tab.active{color:var(--color-text-primary);font-weight:500;border-bottom:2px solid var(--color-text-primary)}
+.sb-panel{display:none;flex:1;overflow-y:auto;padding:12px}
+.sb-panel.active{display:block}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:11px;color:var(--color-text-secondary);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em}
+.field input,.field select{width:100%;font-size:13px;padding:6px 8px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:var(--color-background-primary);color:var(--color-text-primary)}
+.field input:focus,.field select:focus{outline:none;border-color:var(--color-border-primary)}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.section-title{font-size:11px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.06em;margin:14px 0 8px}
+.bs-list{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.bs-item{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:8px 10px;font-size:12px;display:flex;justify-content:space-between;align-items:center;border:0.5px solid var(--color-border-tertiary)}
+.bs-item-label{font-weight:500;color:var(--color-text-primary)}
+.bs-item-coord{color:var(--color-text-secondary);font-size:11px}
+.btn-sm{font-size:11px;padding:4px 8px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer}
+.btn-sm:hover{background:var(--color-background-secondary)}
+.btn-add{width:100%;padding:7px;font-size:12px;border:0.5px dashed var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer;margin-bottom:4px}
+.btn-add:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+.btn-primary{width:100%;padding:9px;font-size:13px;font-weight:500;border:0.5px solid var(--color-border-primary);border-radius:var(--border-radius-md);background:var(--color-text-primary);color:var(--color-background-primary);cursor:pointer;margin-top:4px}
+.btn-primary:hover{opacity:0.85}
+.btn-export{padding:7px 14px;font-size:12px;font-weight:500;border:0.5px solid var(--color-border-primary);border-radius:var(--border-radius-md);background:var(--color-text-primary);color:var(--color-background-primary);cursor:pointer}
+.btn-export:hover{opacity:0.85}
+.sb-canvas{flex:1;position:relative;background:var(--color-background-secondary);overflow:hidden;min-height:500px}
+canvas#riskCanvas{position:absolute;top:0;left:0;width:100%;height:100%}
+.canvas-overlay{position:absolute;top:8px;left:8px;background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:8px 10px;font-size:11px;color:var(--color-text-secondary)}
+.canvas-overlay b{color:var(--color-text-primary);display:block;font-size:12px;font-weight:500;margin-bottom:2px}
+.canvas-legend{position:absolute;bottom:8px;left:8px;background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:8px 10px;display:flex;gap:12px;align-items:center}
+.legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--color-text-secondary)}
+.legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.canvas-toolbar{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:6px}
+.tool-btn{width:30px;height:30px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:var(--color-background-primary);cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;color:var(--color-text-secondary)}
+.tool-btn.active,.tool-btn:hover{background:var(--color-background-secondary);color:var(--color-text-primary);border-color:var(--color-border-primary)}
+.code-block{background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:10px;font-family:var(--font-mono);font-size:10.5px;color:var(--color-text-secondary);white-space:pre;overflow:auto;max-height:300px;line-height:1.6}
+.badge{display:inline-block;padding:2px 7px;border-radius:var(--border-radius-md);font-size:10px;font-weight:500}
+.badge-info{background:var(--color-background-info);color:var(--color-text-info)}
+.badge-warn{background:var(--color-background-warning);color:var(--color-text-warning)}
+.slider-row{display:flex;align-items:center;gap:8px}
+.slider-row input[type=range]{flex:1}
+.slider-val{font-size:12px;font-weight:500;min-width:36px;text-align:right;color:var(--color-text-primary)}
+.hotspot-list{display:flex;flex-direction:column;gap:5px;margin-bottom:8px}
+.hotspot-item{background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:7px 9px;font-size:11px;display:flex;justify-content:space-between;align-items:center}
+.mode-indicator{position:absolute;bottom:8px;right:8px;font-size:11px;padding:4px 9px;border-radius:var(--border-radius-md);background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);color:var(--color-text-secondary)}
+</style>
+
+<div class="sb-root">
+  <div class="sb-header">
+    <div>
+      <div class="sb-title">UAM Scenario Builder</div>
+      <div class="sb-subtitle">Configure gNB positions, UAV parameters, and risk heatmap</div>
+    </div>
+    <button class="btn-export" onclick="exportConfig()">Export MATLAB config</button>
+  </div>
+  <div class="sb-body">
+    <div class="sb-sidebar">
+      <div class="sb-tabs">
+        <button class="sb-tab active" onclick="switchTab('general',this)">General</button>
+        <button class="sb-tab" onclick="switchTab('infra',this)">gNBs</button>
+        <button class="sb-tab" onclick="switchTab('risk',this)">Risk</button>
+        <button class="sb-tab" onclick="switchTab('export',this)">Output</button>
+      </div>
+
+      <div id="panel-general" class="sb-panel active">
+        <div class="section-title">Corridor</div>
+        <div class="field"><label>Corridor length (m)</label><input type="number" id="corridorLength" value="1800"></div>
+        <div class="field-row">
+          <div class="field"><label>Drones</label><input type="number" id="numDrones" value="20" min="1" max="60"></div>
+          <div class="field"><label>Flight time (s)</label><input type="number" id="flightTime" value="25"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Update rate (Hz)</label><input type="number" id="updateRate" value="5"></div>
+          <div class="field"><label>Drones/slot</label><input type="number" id="dronesPerSlot" value="5"></div>
+        </div>
+        <div class="field"><label>Drone east offset (m)</label><input type="number" id="droneEast" value="100"></div>
+        <div class="field-row">
+          <div class="field"><label>Start delay min (s)</label><input type="number" id="delayMin" value="20"></div>
+          <div class="field"><label>Start delay max (s)</label><input type="number" id="delayMax" value="50"></div>
+        </div>
+        <div class="section-title">Radio</div>
+        <div class="field-row">
+          <div class="field"><label>Carrier freq (GHz)</label><input type="number" id="fc" value="3.5" step="0.1"></div>
+          <div class="field"><label>BW (MHz)</label><input type="number" id="bw" value="20"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Tx power (dBm)</label><input type="number" id="txPower" value="23"></div>
+          <div class="field"><label>gNB gain (dBi)</label><input type="number" id="gNBGain" value="8"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Noise fig (dB)</label><input type="number" id="noiseFig" value="6"></div>
+          <div class="field"><label>SNR threshold</label><input type="number" id="snrThresh" value="10"></div>
+        </div>
+        <div class="section-title">Latency (ms)</div>
+        <div class="field-row">
+          <div class="field"><label>Radio</label><input type="number" id="latRadio" value="5"></div>
+          <div class="field"><label>Core</label><input type="number" id="latCore" value="10"></div>
+        </div>
+        <div class="field"><label>Video</label><input type="number" id="latVideo" value="11"></div>
+      </div>
+
+      <div id="panel-infra" class="sb-panel">
+        <div class="section-title">gNB / base stations <span class="badge badge-info" id="bsCount">3</span></div>
+        <div class="bs-list" id="bsList"></div>
+        <button class="btn-add" onclick="addBS()">+ add base station</button>
+
+        <div class="section-title">Add gNB manually</div>
+        <div class="field-row">
+          <div class="field"><label>North (m)</label><input type="number" id="newBsN" value="0" step="50"></div>
+          <div class="field"><label>East (m)</label><input type="number" id="newBsE" value="0" step="50"></div>
+        </div>
+        <div class="field"><label>Altitude – down (m)</label><input type="number" id="newBsD" value="-30" step="5"></div>
+        <button class="btn-primary" onclick="addBSManual()">Add to scenario</button>
+
+        <div class="section-title">Master control</div>
+        <div class="field-row">
+          <div class="field"><label>North (m)</label><input type="number" id="masterN" value="-600"></div>
+          <div class="field"><label>East (m)</label><input type="number" id="masterE" value="0"></div>
+        </div>
+        <div class="field"><label>Altitude – down (m)</label><input type="number" id="masterD" value="-40"></div>
+
+        <div class="section-title">Tip</div>
+        <div style="font-size:11px;color:var(--color-text-secondary);line-height:1.6">
+          Click on the map canvas (right) to place a gNB visually. Switch tool to "gNB" mode using the toolbar icons.
+        </div>
+      </div>
+
+      <div id="panel-risk" class="sb-panel">
+        <div class="section-title">Risk weights</div>
+        <div class="field">
+          <label>w_unc (uncertainty)</label>
+          <div class="slider-row"><input type="range" min="0" max="1" step="0.05" value="0.4" oninput="updateWeight('unc',this.value)"><span class="slider-val" id="w-unc-val">0.40</span></div>
+        </div>
+        <div class="field">
+          <label>w_map (map exposure)</label>
+          <div class="slider-row"><input type="range" min="0" max="1" step="0.05" value="0.4" oninput="updateWeight('map',this.value)"><span class="slider-val" id="w-map-val">0.40</span></div>
+        </div>
+        <div class="field">
+          <label>w_vid (video quality)</label>
+          <div class="slider-row"><input type="range" min="0" max="1" step="0.05" value="0.2" oninput="updateWeight('vid',this.value)"><span class="slider-val" id="w-vid-val">0.20</span></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>r_min (m)</label><input type="number" id="rMin" value="25"></div>
+          <div class="field"><label>k_aoi</label><input type="number" id="kAoi" value="1" step="0.1"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>tau_max (ms)</label><input type="number" id="tauMax" value="500"></div>
+          <div class="field"><label>d_crit (m)</label><input type="number" id="dCrit" value="150"></div>
+        </div>
+        <div class="field"><label>R_bar_sys threshold</label><input type="number" id="rBarSys" value="100000"></div>
+
+        <div class="section-title">Hotspots on map <span class="badge badge-warn" id="hsCount">0</span></div>
+        <div class="hotspot-list" id="hsList"></div>
+        <div style="font-size:11px;color:var(--color-text-secondary);line-height:1.6;margin-bottom:8px">
+          Select "Hotspot" tool and click the map to place risk hotspots. Drag sliders to tune amplitude and sigma.
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Amplitude</label>
+            <div class="slider-row"><input type="range" id="hsAmp" min="0.1" max="1" step="0.05" value="0.75"><span class="slider-val" id="hsAmpVal">0.75</span></div>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Sigma (m)</label>
+            <div class="slider-row"><input type="range" id="hsSig" min="40" max="300" step="10" value="120"><span class="slider-val" id="hsSigVal">120</span></div>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Num random</label><input type="number" id="numRandHS" value="12" min="0" max="30"></div>
+          <div class="field"><label>Rand seed</label><input type="number" id="randSeed" value="42"></div>
+        </div>
+        <button class="btn-primary" onclick="generateRandomHS()">Regenerate random hotspots</button>
+      </div>
+
+      <div id="panel-export" class="sb-panel">
+        <div class="section-title">Generated MATLAB config</div>
+        <div style="font-size:11px;color:var(--color-text-secondary);margin-bottom:8px">Paste this struct at the top of your simulation function.</div>
+        <div class="code-block" id="exportCode">click "Export MATLAB config" above</div>
+        <button class="btn-primary" style="margin-top:8px" onclick="copyCode()">Copy to clipboard</button>
+        <div style="height:12px"></div>
+        <div class="section-title">Quick summary</div>
+        <div id="summaryCards" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px"></div>
+        <div style="margin-top:12px">
+          <button class="btn-primary" onclick="sendPrompt('How should I refactor my MATLAB simulator to accept a config struct instead of hardcoded parameters? Here is my current structure: UAM_AoI_Control_Sim_WithRisk() with all params hardcoded at the top. Show me the refactored function signature and how to unpack the config struct. ↗')">Ask Claude how to refactor ↗</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="sb-canvas">
+      <canvas id="riskCanvas"></canvas>
+      <div class="canvas-overlay">
+        <b>Risk heatmap + infrastructure</b>
+        North/East plane · corridor view
+      </div>
+      <div class="canvas-toolbar">
+        <button class="tool-btn active" id="tool-pan" title="Pan" onclick="setTool('pan')">✥</button>
+        <button class="tool-btn" id="tool-bs" title="Place gNB" onclick="setTool('bs')">⬡</button>
+        <button class="tool-btn" id="tool-hs" title="Place Hotspot" onclick="setTool('hs')">◎</button>
+        <button class="tool-btn" id="tool-del" title="Delete" onclick="setTool('del')">✕</button>
+      </div>
+      <div class="canvas-legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#e24b4a"></div>gNB</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#185fa5"></div>Master</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#1d9e75;opacity:0.7"></div>Hotspot</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#888;border:1.5px dashed #444"></div>Corridor</div>
+      </div>
+      <div class="mode-indicator" id="modeInd">tool: pan</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const state = {
+  tool: 'pan',
+  bsList: [
+    {n:0, e:-1600, d:-30},
+    {n:0, e:0, d:-30},
+    {n:0, e:1600, d:-30}
+  ],
+  master: {n:-600, e:0, d:-40},
+  hotspots: [],
+  weights: {unc:0.4, map:0.4, vid:0.2},
+  randHotspots: [],
+  randSeed: 42,
+  numRandHS: 12,
+  view: {cx:0, cy:0, scale:1},
+  dragging: false,
+  lastMouse: null
+};
+
+const WORLD = {xmin:-1800, xmax:1800, ymin:-700, ymax:700};
+
+function initRandHotspots(){
+  const s = state.randSeed;
+  const n = state.numRandHS;
+  state.randHotspots = [];
+  for(let i=0;i<n;i++){
+    const rx = seededRand(s+i*3);
+    const ry = seededRand(s+i*3+1);
+    const ra = seededRand(s+i*3+2);
+    const rs = seededRand(s+i*3+3);
+    state.randHotspots.push({
+      x: WORLD.xmin + rx*(WORLD.xmax-WORLD.xmin),
+      y: WORLD.ymin + ry*(WORLD.ymax-WORLD.ymin),
+      amp: 0.5 + 0.5*ra,
+      sig: 80 + 120*rs,
+      random: true
+    });
+  }
+}
+
+function seededRand(seed){
+  let x = Math.sin(seed+1)*10000;
+  return x - Math.floor(x);
+}
+
+const canvas = document.getElementById('riskCanvas');
+const ctx = canvas.getContext('2d');
+
+function resizeCanvas(){
+  canvas.width = canvas.offsetWidth;
+  canvas.height = canvas.offsetHeight;
+  render();
+}
+
+function worldToCanvas(wx, wy){
+  const W = canvas.width, H = canvas.height;
+  const ww = WORLD.xmax-WORLD.xmin, wh = WORLD.ymax-WORLD.ymin;
+  const scale = Math.min(W/ww, H/wh) * state.view.scale;
+  const cx = W/2 + (wx - state.view.cx)*scale;
+  const cy = H/2 - (wy - state.view.cy)*scale;
+  return {x:cx, y:cy, scale};
+}
+
+function canvasToWorld(cx, cy){
+  const W = canvas.width, H = canvas.height;
+  const ww = WORLD.xmax-WORLD.xmin, wh = WORLD.ymax-WORLD.ymin;
+  const scale = Math.min(W/ww, H/wh) * state.view.scale;
+  const wx = (cx - W/2)/scale + state.view.cx;
+  const wy = -(cy - H/2)/scale + state.view.cy;
+  return {x:wx, y:wy};
+}
+
+function rhoAt(wx, wy, hotspots){
+  let v=0;
+  hotspots.forEach(h=>{
+    const dx=wx-h.x, dy=wy-h.y;
+    v += h.amp * Math.exp(-(dx*dx+dy*dy)/(2*h.sig*h.sig));
+  });
+  return Math.min(v,1);
+}
+
+function renderHeatmap(){
+  const W=canvas.width, H=canvas.height;
+  const allHS = [...state.randHotspots, ...state.hotspots];
+  if(allHS.length===0) return;
+  const res=4;
+  const imgData = ctx.createImageData(W,H);
+  for(let py=0;py<H;py+=res){
+    for(let px=0;px<W;px+=res){
+      const w=canvasToWorld(px,py);
+      const v=rhoAt(w.x,w.y,allHS);
+      const r=Math.round(Math.min(255,v*2*255));
+      const g=Math.round(Math.max(0,v*255-128));
+      for(let dy=0;dy<res&&py+dy<H;dy++){
+        for(let dx=0;dx<res&&px+dx<W;dx++){
+          const idx=((py+dy)*W+(px+dx))*4;
+          imgData.data[idx]=r;
+          imgData.data[idx+1]=g;
+          imgData.data[idx+2]=0;
+          imgData.data[idx+3]=Math.round(v*160+20);
+        }
+      }
+    }
+  }
+  ctx.putImageData(imgData,0,0);
+}
+
+function render(){
+  const W=canvas.width, H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='rgba(20,20,30,0.06)';
+  ctx.fillRect(0,0,W,H);
+
+  renderHeatmap();
+
+  const sp = worldToCanvas(0,0).scale;
+
+  // Grid lines
+  ctx.strokeStyle='rgba(128,128,128,0.15)';
+  ctx.lineWidth=0.5;
+  for(let x=-1800;x<=1800;x+=300){
+    const p1=worldToCanvas(x,WORLD.ymin), p2=worldToCanvas(x,WORLD.ymax);
+    ctx.beginPath(); ctx.moveTo(p1.x,p1.y); ctx.lineTo(p2.x,p2.y); ctx.stroke();
+  }
+  for(let y=-600;y<=600;y+=300){
+    const p1=worldToCanvas(WORLD.xmin,y), p2=worldToCanvas(WORLD.xmax,y);
+    ctx.beginPath(); ctx.moveTo(p1.x,p1.y); ctx.lineTo(p2.x,p2.y); ctx.stroke();
+  }
+
+  // Corridor
+  const eOff = parseInt(document.getElementById('droneEast').value)||100;
+  const cL = parseInt(document.getElementById('corridorLength').value)||1800;
+  const c1=worldToCanvas(-cL/2,eOff), c2=worldToCanvas(cL/2,eOff);
+  ctx.setLineDash([6,4]);
+  ctx.strokeStyle='rgba(136,136,136,0.55)';
+  ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(c1.x,c1.y); ctx.lineTo(c2.x,c2.y); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Drone path arrows
+  ctx.fillStyle='rgba(136,136,136,0.45)';
+  for(let x=-cL/2+200;x<cL/2;x+=300){
+    const p=worldToCanvas(x,eOff);
+    ctx.beginPath();
+    ctx.moveTo(p.x,p.y); ctx.lineTo(p.x-8,p.y+5); ctx.lineTo(p.x-8,p.y-5);
+    ctx.fill();
+  }
+
+  // Axes labels
+  ctx.fillStyle='rgba(128,128,128,0.6)';
+  ctx.font='10px var(--font-sans)';
+  ctx.textAlign='center';
+  [-1500,-900,-300,300,900,1500].forEach(x=>{
+    const p=worldToCanvas(x,-620);
+    ctx.fillText(x+'m',p.x,p.y);
+  });
+
+  // Hotspots (manual)
+  state.hotspots.forEach((h,i)=>{
+    const p=worldToCanvas(h.x,h.y);
+    const r=Math.max(4,h.sig*sp*0.15);
+    ctx.strokeStyle='rgba(29,158,117,0.8)';
+    ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2); ctx.stroke();
+    ctx.strokeStyle='rgba(29,158,117,0.3)';
+    ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.arc(p.x,p.y,r*2,0,Math.PI*2); ctx.stroke();
+    ctx.fillStyle='rgba(29,158,117,0.9)';
+    ctx.beginPath(); ctx.arc(p.x,p.y,4,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='rgba(29,158,117,1)';
+    ctx.font='10px var(--font-sans)';
+    ctx.textAlign='left';
+    ctx.fillText('H'+(i+1),p.x+6,p.y-4);
+  });
+
+  // gNBs
+  state.bsList.forEach((bs,i)=>{
+    const p=worldToCanvas(bs.n,bs.e);
+    ctx.strokeStyle='#e24b4a';
+    ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(p.x,p.y-12); ctx.lineTo(p.x,p.y+4); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(p.x-8,p.y-8); ctx.lineTo(p.x,p.y-12); ctx.lineTo(p.x+8,p.y-8); ctx.stroke();
+    ctx.fillStyle='#e24b4a';
+    ctx.beginPath(); ctx.arc(p.x,p.y+4,4,0,Math.PI*2); ctx.fill();
+    ctx.font='10px var(--font-sans)'; ctx.textAlign='center';
+    ctx.fillStyle='rgba(226,75,74,0.9)';
+    ctx.fillText('gNB'+(i+1),p.x,p.y+18);
+  });
+
+  // Master
+  const mp=worldToCanvas(state.master.n,state.master.e);
+  ctx.fillStyle='#185fa5';
+  ctx.beginPath(); ctx.rect(mp.x-7,mp.y-7,14,14); ctx.fill();
+  ctx.font='10px var(--font-sans)'; ctx.textAlign='center';
+  ctx.fillStyle='#185fa5';
+  ctx.fillText('MBS',mp.x,mp.y+18);
+
+  // Random hotspot centres (small dots)
+  ctx.fillStyle='rgba(29,158,117,0.25)';
+  state.randHotspots.forEach(h=>{
+    const p=worldToCanvas(h.x,h.y);
+    ctx.beginPath(); ctx.arc(p.x,p.y,2,0,Math.PI*2); ctx.fill();
+  });
+
+  // Cursor indicator
+  ctx.font='11px var(--font-sans)';
+  ctx.textAlign='left';
+  ctx.fillStyle='rgba(128,128,128,0.5)';
+  const modeLabels={pan:'pan mode',bs:'click to place gNB',hs:'click to place hotspot',del:'click to delete'};
+  ctx.fillText(modeLabels[state.tool]||'',8,H-8);
+}
+
+function setTool(t){
+  state.tool=t;
+  document.querySelectorAll('.tool-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tool-'+t)?.classList.add('active');
+  document.getElementById('modeInd').textContent='tool: '+t;
+  canvas.style.cursor = t==='pan'?'grab':t==='del'?'crosshair':'cell';
+}
+
+canvas.addEventListener('mousedown',e=>{
+  state.dragging=true;
+  state.lastMouse={x:e.offsetX,y:e.offsetY};
+  if(state.tool==='bs'){
+    const w=canvasToWorld(e.offsetX,e.offsetY);
+    state.bsList.push({n:Math.round(w.x),e:Math.round(w.y),d:-30});
+    renderBSList(); render(); return;
+  }
+  if(state.tool==='hs'){
+    const w=canvasToWorld(e.offsetX,e.offsetY);
+    const amp=parseFloat(document.getElementById('hsAmp').value);
+    const sig=parseFloat(document.getElementById('hsSig').value);
+    state.hotspots.push({x:Math.round(w.x),y:Math.round(w.y),amp,sig,random:false});
+    renderHSList(); render(); return;
+  }
+  if(state.tool==='del'){
+    const w=canvasToWorld(e.offsetX,e.offsetY);
+    const thresh=40;
+    // check gNBs
+    let removed=false;
+    state.bsList = state.bsList.filter(bs=>{
+      const d=Math.hypot(bs.n-w.x,bs.e-w.y);
+      if(d<thresh&&!removed){removed=true;return false;}
+      return true;
+    });
+    // check manual hotspots
+    removed=false;
+    state.hotspots = state.hotspots.filter(h=>{
+      const d=Math.hypot(h.x-w.x,h.y-w.y);
+      if(d<thresh&&!removed){removed=true;return false;}
+      return true;
+    });
+    renderBSList(); renderHSList(); render(); return;
+  }
+});
+
+canvas.addEventListener('mousemove',e=>{
+  if(state.dragging && state.tool==='pan' && state.lastMouse){
+    const W=canvas.width, H=canvas.height;
+    const ww=WORLD.xmax-WORLD.xmin;
+    const s=Math.min(W/(ww),H/(WORLD.ymax-WORLD.ymin))*state.view.scale;
+    state.view.cx -= (e.offsetX-state.lastMouse.x)/s;
+    state.view.cy += (e.offsetY-state.lastMouse.y)/s;
+    state.lastMouse={x:e.offsetX,y:e.offsetY};
+    render();
+  }
+});
+
+canvas.addEventListener('mouseup',()=>{state.dragging=false;});
+canvas.addEventListener('wheel',e=>{
+  e.preventDefault();
+  state.view.scale *= e.deltaY>0?0.9:1.1;
+  state.view.scale=Math.min(Math.max(state.view.scale,0.3),5);
+  render();
+},{passive:false});
+
+function switchTab(id, el){
+  document.querySelectorAll('.sb-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.sb-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('panel-'+id).classList.add('active');
+  el.classList.add('active');
+  if(id==='export') generateExport();
+}
+
+function renderBSList(){
+  const list=document.getElementById('bsList');
+  list.innerHTML=state.bsList.map((bs,i)=>`
+    <div class="bs-item">
+      <div>
+        <div class="bs-item-label">gNB ${i+1}</div>
+        <div class="bs-item-coord">N:${bs.n}m  E:${bs.e}m  D:${bs.d}m</div>
+      </div>
+      <button class="btn-sm" onclick="removeBS(${i})">✕</button>
+    </div>`).join('');
+  document.getElementById('bsCount').textContent=state.bsList.length;
+}
+
+function removeBS(i){state.bsList.splice(i,1);renderBSList();render();}
+
+function addBSManual(){
+  const n=parseInt(document.getElementById('newBsN').value)||0;
+  const e=parseInt(document.getElementById('newBsE').value)||0;
+  const d=parseInt(document.getElementById('newBsD').value)||-30;
+  state.bsList.push({n,e,d});
+  renderBSList(); render();
+}
+
+function addBS(){addBSManual();}
+
+function renderHSList(){
+  const list=document.getElementById('hsList');
+  list.innerHTML=state.hotspots.map((h,i)=>`
+    <div class="hotspot-item">
+      <span style="color:var(--color-text-secondary)">H${i+1}: (${h.x},${h.y}) amp=${h.amp.toFixed(2)} σ=${h.sig}m</span>
+      <button class="btn-sm" onclick="removeHS(${i})">✕</button>
+    </div>`).join('');
+  document.getElementById('hsCount').textContent=state.hotspots.length;
+}
+
+function removeHS(i){state.hotspots.splice(i,1);renderHSList();render();}
+
+function updateWeight(k,v){
+  state.weights[k]=parseFloat(v);
+  document.getElementById('w-'+k+'-val').textContent=parseFloat(v).toFixed(2);
+}
+
+document.getElementById('hsAmp').oninput=function(){
+  document.getElementById('hsAmpVal').textContent=parseFloat(this.value).toFixed(2);
+};
+document.getElementById('hsSig').oninput=function(){
+  document.getElementById('hsSigVal').textContent=this.value;
+};
+
+function generateRandomHS(){
+  state.randSeed=parseInt(document.getElementById('randSeed').value)||42;
+  state.numRandHS=parseInt(document.getElementById('numRandHS').value)||12;
+  initRandHotspots(); render();
+}
+
+function gv(id){return document.getElementById(id)?.value;}
+
+function generateExport(){
+  const bsMat = state.bsList.map(b=>`${b.n} ${b.e} ${b.d}`).join(';\n                ');
+  const hsManual = state.hotspots.map(h=>`  cfg.hotspot_x(end+1) = ${h.x}; cfg.hotspot_y(end+1) = ${h.y}; cfg.hotspot_amp(end+1) = ${h.amp.toFixed(2)}; cfg.hotspot_sig(end+1) = ${h.sig};`).join('\n');
+  const code = `function cfg = build_scenario_config()
+%% Auto-generated by UAM Scenario Builder
+%% Paste into your simulation and call:
+%%   cfg = build_scenario_config();
+%%   UAM_AoI_Control_Sim_WithRisk(cfg);
+
+%% — Corridor & fleet
+cfg.numDrones       = ${gv('numDrones')};
+cfg.corridorLength  = ${gv('corridorLength')};
+cfg.flightTime      = ${gv('flightTime')};
+cfg.updateRate      = ${gv('updateRate')};
+cfg.dronesPerSlot   = ${gv('dronesPerSlot')};
+cfg.droneEastPos    = ${gv('droneEast')};
+cfg.minStartDelay   = ${gv('delayMin')};
+cfg.maxStartDelay   = ${gv('delayMax')};
+
+%% — Radio
+cfg.fc              = ${parseFloat(gv('fc'))*1e9};
+cfg.pTransmitDrone  = ${gv('txPower')};
+cfg.gNB_Gain        = ${gv('gNBGain')};
+cfg.noiseFigure     = ${gv('noiseFig')};
+cfg.bw              = ${parseInt(gv('bw'))*1e6};
+cfg.thresholdSNR    = ${gv('snrThresh')};
+
+%% — Latency
+cfg.radioDelay      = ${gv('latRadio')};
+cfg.coreDelay       = ${gv('latCore')};
+cfg.videoDelay      = ${gv('latVideo')};
+
+%% — Risk model
+cfg.w_unc           = ${state.weights.unc.toFixed(2)};
+cfg.w_map           = ${state.weights.map.toFixed(2)};
+cfg.w_vid           = ${state.weights.vid.toFixed(2)};
+cfg.r_min           = ${gv('rMin')};
+cfg.k_aoi           = ${gv('kAoi')};
+cfg.tau_max         = ${gv('tauMax')};
+cfg.d_crit          = ${gv('dCrit')};
+cfg.R_bar_sys       = ${gv('rBarSys')};
+
+%% — gNB positions  [N  E  D]
+cfg.microBSPos = [ ${bsMat} ];
+
+%% — Master control
+cfg.masterPos = [${gv('masterN')} ${gv('masterE')} ${gv('masterD')}];
+
+%% — Heatmap (random hotspots)
+cfg.numHotspots     = ${state.numRandHS};
+cfg.rng_seed        = ${state.randSeed};
+
+%% — Manual hotspots (appended)
+cfg.hotspot_x   = [];
+cfg.hotspot_y   = [];
+cfg.hotspot_amp = [];
+cfg.hotspot_sig = [];
+${hsManual}
+
+end`;
+  document.getElementById('exportCode').textContent=code;
+  const cards=[
+    ['Drones',gv('numDrones')],
+    ['gNBs',state.bsList.length],
+    ['Hotspots',state.hotspots.length+state.numRandHS],
+    ['Seed',state.randSeed]
+  ];
+  document.getElementById('summaryCards').innerHTML=cards.map(([l,v])=>`
+    <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px">
+      <div style="font-size:11px;color:var(--color-text-secondary)">${l}</div>
+      <div style="font-size:20px;font-weight:500;color:var(--color-text-primary)">${v}</div>
+    </div>`).join('');
+}
+
+function exportConfig(){
+  generateExport();
+  switchTab('export', document.querySelectorAll('.sb-tab')[3]);
+}
+
+function copyCode(){
+  const code=document.getElementById('exportCode').textContent;
+  navigator.clipboard?.writeText(code).then(()=>{
+    const btn=event.target; btn.textContent='Copied!';
+    setTimeout(()=>btn.textContent='Copy to clipboard',2000);
+  });
+}
+
+initRandHotspots();
+renderBSList();
+renderHSList();
+
+const ro=new ResizeObserver(()=>resizeCanvas());
+ro.observe(canvas.parentElement);
+setTimeout(resizeCanvas,80);
+</script>
