@@ -112,6 +112,11 @@ See `validate_uam_config.m` for the full list of parameters and their defaults.
 
 The simulator produces a 7-panel MATLAB figure:
 
+<p align="center">
+  <img src="assets/maindash.png" width="800" alt="Simulation output"/>
+</p>
+<p align="center"><em>Figure 1 — UAM scenario: ground risk heatmap + per-drone metric panels</em></p>
+
 1. **3D Ground Risk Heatmap** with drone trajectories and AoI uncertainty spheres
 2. **Uncertainty Overlap Risk** `R_unc(t)` per drone
 3. **Map Exposure Risk** `R_map(t)` per drone
