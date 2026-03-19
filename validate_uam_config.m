@@ -1,6 +1,6 @@
 function cfg = validate_uam_config(cfg)
 %% Fills missing fields with defaults. Call at the top of the sim.
-defaults.schedulingPolicy = 'round-robin';  % 'round-robin' | 'pf-aoi' | 'risk-aware' | 'hybrid'
+defaults.schedulingPolicy = 'round-robin';  % 'round-robin' | 'pf-classic' | 'pf-aoi' | 'risk-aware' | 'hybrid'
 defaults.sched_alpha      = 0.5;            % hybrid only: weight between PF-AoI and Risk-Aware
 
 defaults.numDrones       = 20;
@@ -50,10 +50,12 @@ cfg.latency_base  = cfg.radioDelay + cfg.coreDelay + cfg.videoDelay;
 cfg.thermalNoise  = -174 + 10*log10(cfg.bw);
 cfg.v_max         = cfg.speedVal;
 
-% Weight sanity check
-wSum = cfg.w_unc + cfg.w_map + cfg.w_vid;
-if abs(wSum - 1.0) > 0.01
-    warning('UAM:config', 'Risk weights sum to %.3f, not 1.0', wSum);
+% Weight sanity check — weights are scale coefficients, NOT probabilities.
+% They do not need to sum to 1. Only flag negative values (unphysical).
+if any([cfg.w_unc, cfg.w_map, cfg.w_vid] < 0)
+    warning('UAM:config', ...
+        'Negative risk weight detected (w_unc=%.3g w_map=%.3g w_vid=%.3g).', ...
+        cfg.w_unc, cfg.w_map, cfg.w_vid);
 end
 
 end

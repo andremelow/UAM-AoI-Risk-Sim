@@ -1,12 +1,39 @@
 function [txSlots, rrPointer] = schedule_drones( ...
     activeDrones, K, policy, rrPointer, ...
-    lastRxTime, now, avgThrput,rawThrput, riskUnc, riskMap, riskVid, ...
-    w_unc, w_map, w_vid, alpha)
+    lastRxTime, now, avgThrput, rawThrput, riskUnc, riskMap, riskVid, ...
+    w_unc, w_map, w_vid, alpha, startTimes)
+%SCHEDULE_DRONES  Select up to K drones for the current TX slot.
+%
+%  startTimes  — [numDrones×1] entry time of each drone (from generate_arrival_times).
+%                Required for correct AoI computation: drones that have never
+%                transmitted have NaN in lastRxTime, so AoI must be measured
+%                from their entry time, not from t=0.
+%
+%  Fix (pf-aoi / risk-aware / hybrid starvation):
+%    aoi_seconds() used to return 0 for NaN lastRxTime, giving these drones
+%    score=0 and permanent starvation.  Now returns (now - startTime) instead,
+%    which is the true AoI for a drone that has never had an update delivered.
 
 txSlots = [];
 n = numel(activeDrones);
 if n == 0, return; end
 K = min(K, n);
+
+%% ------------------------------------------------------------------
+%  Channel quality estimate for every active drone.
+%  Scheduled last step  → rawThrput  (fresh SNR measurement)
+%  Not scheduled        → avgThrput  (EMA proxy)
+%  Prevents PF-classic starvation caused by rawThrput==0.
+%% ------------------------------------------------------------------
+chanEst = zeros(1, n);
+for idx = 1:n
+    u = activeDrones(idx);
+    if rawThrput(u) > 1e-6
+        chanEst(idx) = rawThrput(u);
+    else
+        chanEst(idx) = max(avgThrput(u), 1e-6);
+    end
+end
 
 switch policy
 
@@ -19,72 +46,87 @@ switch policy
         rrPointer = ptr;
 
     case 'pf-classic'
-        % Classic Proportional Fair:
-        %   score_u = R_inst(u) / T_avg(u)
-        % R_inst = instantaneous achievable rate this slot (rawThrput)
-        % T_avg  = exponential moving average of past throughput (avgThrput)
-        % Drones with high current channel quality relative to their
-        % historical average are prioritised — fairness over time.
         scores = zeros(1, n);
         for idx = 1:n
             u = activeDrones(idx);
-            scores(idx) = rawThrput(u) / max(avgThrput(u), 1e-9);
+            scores(idx) = chanEst(idx) / max(avgThrput(u), 1e-9);
         end
         [~, order] = sort(scores, 'descend');
         txSlots = activeDrones(order(1:K));
 
     case 'pf-aoi'
-        % score_u = h_u(t) / avg_throughput_u
-        % Higher AoI and lower past throughput → higher priority
+        % score_u = h_u(t) / T_avg(u)
         scores = zeros(1, n);
         for idx = 1:n
             u = activeDrones(idx);
-            h_u = max(now - lastRxTime(u), 0);   % AoI in seconds
+            h_u = aoi_seconds(lastRxTime(u), now, startTimes(u));
             scores(idx) = h_u / max(avgThrput(u), 1e-9);
         end
         [~, order] = sort(scores, 'descend');
         txSlots = activeDrones(order(1:K));
 
     case 'risk-aware'
-        % score_u = R_u(t) * h_u(t)
-        % Highest instantaneous risk AND most stale → absolute priority
         scores = zeros(1, n);
         for idx = 1:n
-            u = activeDrones(idx);
-            h_u = max(now - lastRxTime(u), 0);
-            if ~isempty(riskUnc{u})
-                R_u = w_unc*riskUnc{u}(end) + w_map*riskMap{u}(end) + w_vid*riskVid{u}(end);
-            else
-                R_u = 0;
-            end
-            scores(idx) = R_u * h_u;
+            u   = activeDrones(idx);
+            h_u = aoi_seconds(lastRxTime(u), now, startTimes(u));
+            R_u = read_risk(riskUnc, riskMap, riskVid, u, w_unc, w_map, w_vid);
+            scores(idx) = (R_u + 1e-9) * (h_u + 1e-3);
         end
         [~, order] = sort(scores, 'descend');
         txSlots = activeDrones(order(1:K));
 
     case 'hybrid'
-        % Convex combination: alpha * PF-AoI score + (1-alpha) * Risk-Aware score
-        % Both sub-scores are normalised to [0,1] before mixing
         pf_scores   = zeros(1, n);
         risk_scores = zeros(1, n);
         for idx = 1:n
-            u = activeDrones(idx);
-            h_u = max(now - lastRxTime(u), 0);
-            pf_scores(idx) = h_u / max(avgThrput(u), 1e-9);
-            if ~isempty(riskUnc{u})
-                R_u = w_unc*riskUnc{u}(end) + w_map*riskMap{u}(end) + w_vid*riskVid{u}(end);
-            else
-                R_u = 0;
-            end
-            risk_scores(idx) = R_u * h_u;
+            u   = activeDrones(idx);
+            h_u = aoi_seconds(lastRxTime(u), now, startTimes(u));
+            pf_scores(idx)   = h_u / max(avgThrput(u), 1e-9);
+            R_u              = read_risk(riskUnc, riskMap, riskVid, u, w_unc, w_map, w_vid);
+            risk_scores(idx) = (R_u + 1e-9) * (h_u + 1e-3);
         end
-        pf_scores   = pf_scores   / max(pf_scores,   [], 'all');  % norm to [0,1]
-        risk_scores = risk_scores / max(risk_scores, [], 'all');
-        combined = alpha * pf_scores + (1-alpha) * risk_scores;
-        [~, order] = sort(combined, 'descend');
-        txSlots = activeDrones(order(1:K));
+        pf_scores   = safe_norm(pf_scores);
+        risk_scores = safe_norm(risk_scores);
+        combined    = alpha * pf_scores + (1-alpha) * risk_scores;
+        [~, order]  = sort(combined, 'descend');
+        txSlots     = activeDrones(order(1:K));
 
     otherwise
-        error("Unknown scheduling policy: %s", policy);
+        error('schedule_drones: unknown policy "%s". Valid: round-robin, pf-classic, pf-aoi, risk-aware, hybrid', policy);
+end
+end
+
+%% ======================================================================
+%  LOCAL HELPERS
+%% ======================================================================
+
+function h = aoi_seconds(lastRx, now, entryTime)
+%AOI_SECONDS  True AoI in seconds.
+%  - Never transmitted (NaN): AoI = time since drone entered the corridor.
+%  - Transmitted before:      AoI = time since last successful reception.
+if isnan(lastRx)
+    h = max(now - entryTime, 0);
+else
+    h = max(now - lastRx, 0);
+end
+end
+
+function R = read_risk(riskUnc, riskMap, riskVid, u, w_unc, w_map, w_vid)
+%READ_RISK  Safe read of last risk sample; returns 0 if history empty.
+if ~isempty(riskUnc{u})
+    R = w_unc*riskUnc{u}(end) + w_map*riskMap{u}(end) + w_vid*riskVid{u}(end);
+else
+    R = 0;
+end
+end
+
+function v = safe_norm(v)
+%SAFE_NORM  Normalise to [0,1]; uniform weights if all scores equal.
+span = max(v) - min(v);
+if span < 1e-12
+    v = ones(size(v)) / numel(v);
+else
+    v = (v - min(v)) / span;
 end
 end

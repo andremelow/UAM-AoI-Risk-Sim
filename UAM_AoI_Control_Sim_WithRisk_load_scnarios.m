@@ -183,10 +183,18 @@ rhoFlat = rhoMap(:);
 % 5. DRONES
 %% =========================================================
 drones = cell(numDrones,1);
-rng('shuffle');
 
-startTimes = sort(minStartDelay + rand(numDrones,1)*(maxStartDelay-minStartDelay));
-endTimes   = startTimes + flightTime;
+rng('shuffle');   % keep for non-arrival randomness (channel, traffic…)
+
+[startTimes, arrivalMeta] = generate_arrival_times(cfg);
+endTimes = startTimes + flightTime;
+
+% Log arrival model to console
+fprintf('[Arrival] model=%-14s  λ_eff≈%.3f drones/s  N=%d\n', ...
+        arrivalMeta.model, ...
+        get_lambda_eff(arrivalMeta), ...
+        numDrones);
+
 
 for k = 1:numDrones
     p1   = [-1500  droneEastPos  -60];
@@ -226,7 +234,8 @@ for i = 1:numDrones
     Payload(i).throughput_Mbps = 0;
     Payload(i).latency_ms      = latency_base;
     Payload(i).lastLatency_ms  = latency_base;
-    Payload(i).frameDelivery   = 1;
+    Payload(i).frameDelivery   = 1;    % EMA de FDR (janela deslizante)
+    Payload(i).queueBacklog_Mb = 0;    % fila acumulada não transmitida
 end
 
 %% =========================================================
@@ -375,7 +384,8 @@ IDX_RSYS     = 7;   IDX_LEVEL    = 8;   IDX_TIME    = 9;
 % Pre-fill static fields
 set(hTileVal(IDX_POLICY), 'String', cfg.schedulingPolicy, ...
     'ForegroundColor', [0.40 0.85 0.55]);
-set(hTileVal(IDX_SCHED),  'String',sprintf('%d / slot', dronesPerSlot));
+set(hTileVal(IDX_SCHED),  'String', ...
+    sprintf('%d/slot | %s', dronesPerSlot, upper(cfg.arrivalModel)));
 
 % --- 3D scene (top, spans both columns) ---
 ax3D = subplot(4,2,[1 2],'Parent',pPlots);
@@ -427,8 +437,15 @@ set(axAoI,'YLimMode','auto','YScale','linear');
 axComm = subplot(4,2,8,'Parent',pPlots);
 hold(axComm,'on'); grid(axComm,'on');
 xlabel(axComm,"Time (s)");
-title(axComm,"Payload Latency (ms, solid) & FDR×500 (dashed)  — per drone");
-set(axComm,'YLimMode','auto');
+title(axComm, sprintf("Latency (ms) & FDR×500 — per drone  [arrival: %s]", ...
+      cfg.arrivalModel));
+
+% Draw vertical tick marks on axAoI for each drone entry time
+% (light gray stems so they don't clutter the AoI lines)
+for k = 1:numDrones
+    xline(axAoI, startTimes(k), ':', 'Color', [0.75 0.75 0.75], ...
+          'LineWidth', 0.4, 'Alpha', 0.5);
+end
 
 %% Encolher subplots para caber o painel lateral
 plotAreaW = 1 - panelW - 0.02;   % largura disponível com margem
@@ -548,7 +565,7 @@ while advance(scene)
         lastReceivedTimestamp, time, ...
         avgThroughput,rawThroughput, ...
         riskUnc, riskMap, riskVid, ...
-        w_unc, w_map, w_vid, cfg.sched_alpha);
+        w_unc, w_map, w_vid, cfg.sched_alpha,startTimes);
 
     %% Pre-compute AoI radius for all active drones (needed for R_unc pairs)
     aoiRadius=zeros(numDrones,1);
@@ -565,46 +582,102 @@ while advance(scene)
         isMyTurn = ismember(i,txSlots);
 
         % Channel model
+        % --- Channel estimation (always) ----------------------------
+        % Compute SNR for every active drone every step.
+        % For TX drones  → real transmission, updates lastReceivedTimestamp.
+        % For non-TX     → silent estimate only (no RF resource used),
+        %                  feeds rawThroughput so PF scheduling is informed.
+        dist  = sqrt(sum((microBSPos - pos).^2, 2));
+        [~, idxBS] = min(dist);
+        posBS = [microBSPos(idxBS,2); microBSPos(idxBS,1); -microBSPos(idxBS,3)];
+        posUE = [pos(2); pos(1); -pos(3)];
+        PL    = nrPathLoss(plCfg, fc, true, posBS, posUE);
+        SNR   = (pTransmitDrone + gNB_Gain - PL) - (thermalNoise + noiseFigure);
+        snrLast(i) = SNR;
+ 
+        % Capacity estimate (used by scheduler next step regardless of TX)
+        cap_Mbps = (bw * log2(1 + 10^(SNR/10))) / 1e6;
+ 
         if isMyTurn
-            dist=sqrt(sum((microBSPos-pos).^2,2));
-            [~,idxBS]=min(dist);
-            posBS=[microBSPos(idxBS,2);microBSPos(idxBS,1);-microBSPos(idxBS,3)];
-            posUE=[pos(2);pos(1);-pos(3)];
-            PL   =nrPathLoss(plCfg,fc,true,posBS,posUE);
-            SNR  =(pTransmitDrone+gNB_Gain-PL)-(thermalNoise+noiseFigure);
-            snrLast(i) = SNR;
-            Payload(i).throughput_Mbps=(bw*log2(1+10^(SNR/10)))/1e6;
-            
+            % --- Actual transmission in this slot ---
+            Payload(i).throughput_Mbps = cap_Mbps;
+            rawThroughput(i)           = cap_Mbps;   % fresh measurement
+            avgThroughput(i) = 0.9 * avgThroughput(i) + 0.1 * cap_Mbps;
+ 
             if SNR > thresholdSNR
                 lastReceivedTimestamp(i) = time;
-                alphaVal   = 0.4;
-                txSuccess(i) = txSuccess(i) + 1;   % ← conta sucesso
+                alphaVal     = 0.4;
+                txSuccess(i) = txSuccess(i) + 1;
             else
-                alphaVal   = 0.1;
-                txFail(i)  = txFail(i) + 1;        % ← conta falha
+                alphaVal    = 0.1;
+                txFail(i)   = txFail(i) + 1;
             end
         else
-            Payload(i).throughput_Mbps=0; alphaVal=0.1;
+            % --- Not scheduled this step ---
+            % Zero delivered throughput (no RF resource), but keep the
+            % channel estimate in rawThroughput so the scheduler can
+            % compare channel quality across all drones fairly.
+            Payload(i).throughput_Mbps = 0;
+            rawThroughput(i)           = cap_Mbps;   % channel quality estimate
+            avgThroughput(i)           = 0.9 * avgThroughput(i);  % delivered EMA decays
+            alphaVal = 0.1;
         end
-        rawThroughput(i) = Payload(i).throughput_Mbps;
-
-        if ismember(i, txSlots)
-            avgThroughput(i) = 0.9 * avgThroughput(i) + 0.1 * Payload(i).throughput_Mbps;
-        else
-            avgThroughput(i) = 0.9 * avgThroughput(i); % delivered rate = 0
-        end
+ 
 
         % Payload / FDR
-        genMb=Traffic(i).queueMb; Traffic(i).queueMb=0;
-        capMb=Payload(i).throughput_Mbps*dt;
-        if capMb>=genMb
-            lat=latency_base+randn()*5;
-            Payload(i).latency_ms=lat; Payload(i).lastLatency_ms=lat;
-            Payload(i).frameDelivery=1;
+        % --- Payload / FDR -------------------------------------------
+        % New frames generated this step (from traffic model)
+        genMb = Traffic(i).queueMb;
+        Traffic(i).queueMb = 0;   % consumed from traffic generator
+ 
+        % Total pending = new frames + backlog from previous steps
+        totalMb = genMb + Payload(i).queueBacklog_Mb;
+ 
+        % Capacity available this step (0 if not scheduled)
+        capMb = Payload(i).throughput_Mbps * dt;
+ 
+        if totalMb < eps
+            % No frames pending — nothing to deliver, FDR_inst = 1
+            FDR_inst = 1;
+            delivered_Mb = 0;
+            Payload(i).queueBacklog_Mb = 0;
+ 
+            % Latency: no load, return smoothly toward baseline
+            lat = latency_base + randn() * 3;
+            Payload(i).latency_ms     = lat;
+            Payload(i).lastLatency_ms = lat;
+ 
+        elseif capMb >= totalMb
+            % Full delivery — queue drained
+            FDR_inst = 1;
+            delivered_Mb = totalMb;
+            Payload(i).queueBacklog_Mb = 0;
+ 
+            lat = latency_base + randn() * 5;
+            Payload(i).latency_ms     = lat;
+            Payload(i).lastLatency_ms = lat;
+ 
         else
-            Payload(i).latency_ms   =Payload(i).lastLatency_ms;
-            Payload(i).frameDelivery=min(max(capMb/max(genMb,eps),0),1);
+            % Partial or zero delivery
+            delivered_Mb = capMb;
+            remaining_Mb = totalMb - delivered_Mb;
+            Payload(i).queueBacklog_Mb = remaining_Mb;
+ 
+            % FDR_inst = fraction of pending frames delivered this step
+            FDR_inst = capMb / totalMb;   % in [0, 1)
+ 
+            % Latency rises with backlog: each Mb of backlog adds ~20 ms
+            % (rough model — adjust the coefficient to taste)
+            backlog_penalty = min(remaining_Mb * 20, tau_max - latency_base);
+            Payload(i).latency_ms = latency_base + backlog_penalty + abs(randn() * 5);
+            Payload(i).lastLatency_ms = Payload(i).latency_ms;
         end
+ 
+        % EMA smoothing of FDR (alpha=0.25 → ~4-step window)
+        % Prevents FDR from spiking to 0 on a single missed step
+        fdr_alpha = 0.25;
+        Payload(i).frameDelivery = (1 - fdr_alpha) * Payload(i).frameDelivery ...
+                                 + fdr_alpha        * FDR_inst;
 
         % AoI
         if isnan(lastReceivedTimestamp(i)), AoI_ms=0;
@@ -809,11 +882,34 @@ sgtitle("Safety Risk Summary","FontSize",14,"FontWeight","bold");
 
 % Heatmap
 subplot(2,3,1);
-imagesc(xVec, yVec, rhoMap); colormap(hot); colorbar; axis xy;
-hold on;
-scatter(hotX, hotY, 60, 'w', 'filled', 'MarkerEdgeColor','k');
-xlabel("North (m)"); ylabel("East (m)");
-title("Ground Risk Heatmap  \rho(x)  (circles = hotspot centres)");
+% Top half: arrival profile histogram
+yyaxis left
+edges = linspace(0, max(startTimes)*1.1, 25);
+histogram(startTimes, edges, 'FaceColor',[0.20 0.55 0.85], 'EdgeColor','none', ...
+          'FaceAlpha', 0.75);
+ylabel("Drone count / bin");
+xlabel("Entry time (s)");
+title(sprintf("Arrival profile  [%s]", cfg.arrivalModel));
+
+% Overlay λ(t) if NHPP-based
+if isfield(cfg,'lambdaProfile') && isa(cfg.lambdaProfile,'function_handle')
+    yyaxis right
+    t_plot = linspace(0, max(startTimes)*1.1, 300);
+    plot(t_plot, cfg.lambdaProfile(t_plot), 'r-', 'LineWidth', 1.6);
+    ylabel("\lambda(t)  [drones/s]");
+end
+grid on;
+
+% Inter-arrival time CDF (inset)
+subplot(2,3,1);   % reuse same axes for annotation only
+iat = diff(startTimes);
+if ~isempty(iat)
+    annotation('textbox', [0.08 0.88 0.25 0.04], ...
+        'String', sprintf('mean IAT = %.1f s  |  cv = %.2f', ...
+                  mean(iat), std(iat)/mean(iat)), ...
+        'EdgeColor','none','FontSize',7,'Color',[0.3 0.3 0.3]);
+end
+
 
 % Mean R_unc
 subplot(2,3,2);
@@ -890,7 +986,7 @@ function str = droneStatusLine(k, time, startTimes, endTimes, ...
 
 %% Estado
 if time < startTimes(k)
-    statusStr = 'AG.';
+    statusStr = 'WT';
     pct = 0;
 elseif time > endTimes(k)
     statusStr = 'CO';
@@ -899,7 +995,7 @@ elseif isInTxSlot
     statusStr = 'TR';
     pct = (time - startTimes(k)) / (endTimes(k) - startTimes(k)) * 100;
 else
-    statusStr = 'Fl';
+    statusStr = 'FL';
     pct = (time - startTimes(k)) / (endTimes(k) - startTimes(k)) * 100;
 end
 
@@ -947,4 +1043,15 @@ errStr = sprintf('%4d', txFail(k));
 
 str = sprintf('U%02d  %-9s  %s  %s | F:%s  ok:%s  e:%s  S:%s', ...
               k, statusStr, bar, aoiStr, fdrStr, okStr, errStr, snrStr);
+end
+
+function leff = get_lambda_eff(meta)
+% Extract effective lambda from arrivalMeta for logging.
+if isfield(meta,'lambda_eff')
+    leff = meta.lambda_eff;
+elseif isfield(meta,'nhpp_meta') && isfield(meta.nhpp_meta,'lambda_eff')
+    leff = meta.nhpp_meta.lambda_eff;
+else
+    leff = NaN;
+end
 end
