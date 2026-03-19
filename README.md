@@ -81,6 +81,10 @@ UAM_AoI_Control_Sim_WithRisk(cfg);
 
 ### Use the Web Scenario Builder
 Open `uam_scenario_builder_web.html` in any modern browser, configure the scenario visually, and click **Export Config** to generate a `build_scenario_config.m` file.
+<p align="center">
+  <img src="assets/builder.png" width="800" alt="Simulation output"/>
+</p>
+<p align="center"><em>Figure 0 — UAM Web Scenario Builder: configure the scenario visually</em></p>
 
 ---
 
