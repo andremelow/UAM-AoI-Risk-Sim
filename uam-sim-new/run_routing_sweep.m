@@ -30,7 +30,13 @@ policies  = sweep_cfg.policies;
 scenarios = sweep_cfg.scenarios;
 base_cfg  = sweep_cfg.base_cfg;
 
-base_cfg.headless  = true;
+% Headless: caller controls via sweep_cfg.headless or base_cfg.headless.
+% Default is false (dashboard visible) to match run_sweep behaviour.
+if isfield(sweep_cfg, 'headless')
+    base_cfg.headless = sweep_cfg.headless;
+elseif ~isfield(base_cfg, 'headless')
+    base_cfg.headless = false;
+end
 base_cfg.csvExport = true;
 base_cfg.csvDir    = outDir;
 

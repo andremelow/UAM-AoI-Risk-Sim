@@ -11,20 +11,23 @@ function experiment_routing(varargin)
 %    s4 — 2 routes, Risk-A* routing  (3 + 2 drones)
 %
 %  Uso:
-%    experiment_routing()              % roda tudo (com confirmação)
-%    experiment_routing('skip-smoke')  % pula smoke test (já validado)
-%    experiment_routing('--yes')       % não pede confirmação (background)
+%    experiment_routing()                % roda tudo, dashboard visível
+%    experiment_routing('skip-smoke')    % pula smoke test (já validado)
+%    experiment_routing('--yes')         % sem confirmação (background)
+%    experiment_routing('--headless')    % sem dashboard (batch / servidor)
 
 setup_paths();
 
 % --- Argument parsing ---
 skip_smoke   = false;
 auto_confirm = false;
+headless     = false;
 ai = 1;
 while ai <= numel(varargin)
     switch varargin{ai}
         case 'skip-smoke', skip_smoke   = true;
         case '--yes',      auto_confirm = true;
+        case '--headless', headless     = true;
     end
     ai = ai + 1;
 end
@@ -55,7 +58,8 @@ if ~auto_confirm
 end
 
 % --- Common base config ---
-cfg_base = base_config_routing();
+cfg_base          = base_config_routing();
+cfg_base.headless = headless;
 
 % =====================================================================
 % SMOKE TEST (~5 min) — verifies pipeline before committing to full run
@@ -87,6 +91,7 @@ sw_t0 = tic;
 sc.policies  = {'round-robin','round-robin-aware','aoi-pure','risk-aware','max-weight'};
 sc.scenarios = define_routing_scenarios();
 sc.base_cfg  = cfg_base;
+sc.headless  = headless;
 run_routing_sweep(sc, fullfile(OUT_ROOT, 'sweep_routing'));
 fprintf('[ROUTING] Completed in %.2f h\n', toc(sw_t0)/3600);
 
@@ -163,6 +168,7 @@ cfg_smoke.microBSPos(:, 1:2) = cfg_base.microBSPos(:, 1:2) * scale;
 sc.policies  = {'round-robin', 'max-weight'};
 sc.scenarios = struct('label','smoke-static','routing_mode','static','routes',rA);
 sc.base_cfg  = cfg_smoke;
+sc.headless  = cfg_base.headless;
 
 try
     res = run_routing_sweep(sc, fullfile(outRoot, 'smoke'));
