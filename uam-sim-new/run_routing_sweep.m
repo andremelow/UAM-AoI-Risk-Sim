@@ -53,6 +53,7 @@ for si = 1:nScenarios
 
         cfg = apply_routing_scenario(base_cfg, sc);
         cfg.schedulingPolicy = pol;
+        cfg = validate_uam_config(cfg);   % derive numDrones, n_s, n_v, qbar — mirrors run_sweep
 
         fprintf('[ROUTING-SWEEP] Run %d/%d: scenario=%-22s  policy=%s\n', ...
                 run_idx, totalRuns, sc.label, pol);
