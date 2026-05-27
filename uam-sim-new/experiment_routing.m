@@ -110,23 +110,27 @@ end
 %%  Routing scenario definitions
 %% ═══════════════════════════════════════════════════════════════════
 function scenarios = define_routing_scenarios()
-% 30 km corridor, same geometry as build_scenario_config (A2 layout)
-rA.label = 'Route A';  rA.start = [-15000,    0];  rA.goal = [ 15000,    0];
-rB.label = 'Route B';  rB.start = [-15000, -200];  rB.goal = [ 15000,  200];
+% Route geometry from build_scenario_config (Interlagos scenario):
+%   Route 1: East-West corridor  [0,-3000] → [0,+3000]  (6 km)
+%   Route 2: Angled return      [500,+3000] → [200,-3000]
+% 10 drones total in all scenarios (matches base config).
+
+rA.label = 'Route 1';  rA.start = [   0, -3000];  rA.goal = [   0,  3000];
+rB.label = 'Route 2';  rB.start = [ 500,  3000];  rB.goal = [ 200, -3000];
 
 s1.label = '1-route static';   s1.routing_mode = 'static';
-r = rA; r.numDrones = 5;       s1.routes = r;
+r = rA; r.numDrones = 10;      s1.routes = r;
 
 s2.label = '1-route A*';       s2.routing_mode = 'risk_astar';
-r = rA; r.numDrones = 5;       s2.routes = r;
+r = rA; r.numDrones = 10;      s2.routes = r;
 
 s3.label = '2-route static';   s3.routing_mode = 'static';
-ra = rA; ra.numDrones = 3;
-rb = rB; rb.numDrones = 2;     s3.routes = [ra, rb];
+ra = rA; ra.numDrones = 5;
+rb = rB; rb.numDrones = 5;     s3.routes = [ra, rb];
 
 s4.label = '2-route A*';       s4.routing_mode = 'risk_astar';
-ra = rA; ra.numDrones = 3;
-rb = rB; rb.numDrones = 2;     s4.routes = [ra, rb];
+ra = rA; ra.numDrones = 5;
+rb = rB; rb.numDrones = 5;     s4.routes = [ra, rb];
 
 scenarios = [s1, s2, s3, s4];
 end
@@ -151,22 +155,23 @@ end
 function ok = run_smoke(outRoot, cfg_base)
 ok = true;
 
-% Build a tiny 1:10 version of the 1-route-static scenario
+% Smoke test: 1:10 scale of Route 1, 3 drones, no manual hotspots
 cfg_smoke = cfg_base;
 scale = 0.1;
-cfg_smoke.corridorLength = cfg_base.corridorLength * scale;
-cfg_smoke.flightTime     = cfg_smoke.corridorLength / cfg_base.speedVal;
-cfg_smoke.maxStartDelay  = 50;
-
-rA.label = 'Route A';
-rA.start = [-cfg_smoke.corridorLength/2, 0];
-rA.goal  = [ cfg_smoke.corridorLength/2, 0];
-rA.numDrones = 3;
-cfg_smoke.routes = rA;
+cfg_smoke.corridorLength  = cfg_base.corridorLength * scale;
+cfg_smoke.flightTime      = cfg_smoke.corridorLength / cfg_base.speedVal;
+cfg_smoke.maxStartDelay   = 30;
+cfg_smoke.manualHotspots  = cfg_base.manualHotspots * scale;
 cfg_smoke.microBSPos(:, 1:2) = cfg_base.microBSPos(:, 1:2) * scale;
 
+rSmoke.label     = 'Route 1';
+rSmoke.start     = [0, -cfg_smoke.corridorLength/2];
+rSmoke.goal      = [0,  cfg_smoke.corridorLength/2];
+rSmoke.numDrones = 3;
+cfg_smoke.routes = rSmoke;
+
 sc.policies  = {'round-robin', 'max-weight'};
-sc.scenarios = struct('label','smoke-static','routing_mode','static','routes',rA);
+sc.scenarios = struct('label','smoke-static','routing_mode','static','routes',rSmoke);
 sc.base_cfg  = cfg_smoke;
 sc.headless  = cfg_base.headless;
 
