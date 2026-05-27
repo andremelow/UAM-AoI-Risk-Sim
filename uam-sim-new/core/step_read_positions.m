@@ -45,9 +45,6 @@ for i = 1:N
 
     else
         [pos, ~] = read(drones{i});
-        if i == 1 && mod(slot, 50) == 0
-            fprintf('t=%.2f drone1 pos=[%g %g %g %g %g %g %g]\n', time, pos(1:7));
-        end
         if any(isnan(pos(1:3))), continue; end
     end
 
