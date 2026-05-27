@@ -9,14 +9,15 @@ function results = run_sim(cfg)
 %  The monolithic UAM_AoI_Control_Sim_WithRisk.m is replaced by this
 %  orchestrator, which delegates to focused modules in core/, viz/, policies/.
 
-clc; close all;
-
 if nargin < 1, cfg = build_scenario_config(); end
 
 % Ensure all subdirectories are on the path
 setup_paths();
 
 cfg = validate_uam_config(cfg);
+headless = isfield(cfg, 'headless') && cfg.headless;
+
+if ~headless, clc; close all; end
 
 % --- Initialisation ---
 [scene, drones, infra] = init_scenario(cfg);
@@ -40,7 +41,9 @@ else
     infra.precomputed_trajectory = {};   % empty → static mode, no override
 end
 
-dashboard              = init_dashboard(cfg, rhoMap, mapGrid);
+if ~headless
+    dashboard = init_dashboard(cfg, rhoMap, mapGrid);
+end
 
 % --- Main loop ---
 txSlots = [];   % defined here so the post-loop dashboard refresh always has it
@@ -92,7 +95,7 @@ while advance(scene)
     for i = state.activeDrones
         snr_i = state.snrLast(i);
         % SNR spatial trail (dashboard)
-        if ~isnan(snr_i)
+        if ~isnan(snr_i) && ~headless
             dashboard.snrNorthHist{i}(end+1) = state.pendingMsg{i}.pos(1);
             dashboard.snrValHist{i}(end+1)   = snr_i;
         end
@@ -101,13 +104,15 @@ while advance(scene)
         state.snrSlots{i}(end+1)   = slot;
     end
 
-    update_dashboard(dashboard, state, scene, txSlots, slot, cfg);
+    if ~headless
+        update_dashboard(dashboard, state, scene, txSlots, slot, cfg);
+    end
 end
 
 % Final dashboard refresh: the early-exit break fires after step_read_positions
 % marks the last drone invalid but before update_dashboard runs, so the status
 % panel would otherwise show the last drone as still active after landing.
-if exist('slot','var')
+if ~headless && exist('slot','var')
     update_dashboard(dashboard, state, scene, txSlots, slot, cfg);
 end
 

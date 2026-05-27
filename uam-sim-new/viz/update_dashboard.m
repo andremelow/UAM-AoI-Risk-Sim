@@ -39,10 +39,10 @@ for i=state.activeDrones
         db.posNorthHist{i} = db.posNorthHist{i}(end-149:end);
         db.posEastHist{i}  = db.posEastHist{i}(end-149:end);
     end
-    set(db.hMapTrail(i),'XData',db.posNorthHist{i},'YData',db.posEastHist{i});
+    set(db.hMapTrail(i),'XData',db.posEastHist{i},'YData',db.posNorthHist{i});
 
     % Marcador de posição actual
-    set(db.hMapMarker(i),'XData',posN,'YData',posE);
+    set(db.hMapMarker(i),'XData',posE,'YData',posN);
 
     % Círculo de incerteza proporcional a AoI
     if ~isempty(state.h1Val{i})
@@ -51,7 +51,7 @@ for i=state.activeDrones
         h1_s = 0;
     end
     r_aoi = cfg.r_min + cfg.v_max * h1_s;
-    set(db.hMapAoiCirc(i),'XData',posN+r_aoi*cos(theta),'YData',posE+r_aoi*sin(theta));
+    set(db.hMapAoiCirc(i),'XData',posE+r_aoi*cos(theta),'YData',posN+r_aoi*sin(theta));
 
     % SNR vs North — usa histórico acumulado externamente (step 6f no run_sim)
     if ~isempty(db.snrNorthHist{i})

@@ -67,21 +67,21 @@ db.axMap = nexttile(tl, 1, [1 2]);
 hold(db.axMap,'on'); grid(db.axMap,'on');
 set(db.axMap, axprop{:});
 
-surf(db.axMap, mapGrid.XG, mapGrid.YG, zeros(size(mapGrid.XG)), rhoMap, ...
+surf(db.axMap, mapGrid.YG, mapGrid.XG, zeros(size(mapGrid.XG)), rhoMap, ...
      'EdgeColor','none','FaceAlpha',0.50,'FaceColor','interp','Tag','heatmap');
 colormap(db.axMap, hot);
 cb=colorbar(db.axMap,'Location','eastoutside'); cb.Color='w';
 cb.Label.String='\rho(x)  ground risk'; cb.Label.Color='w';
 clim(db.axMap,[0 1]);
 
-% micro-BS: builder exports [East, North, Alt] → plot as (North=col2, East=col1)
+% microBSPos cols: [East, North, Alt] → X=East, Y=North
 for b=1:size(cfg.microBSPos,1)
-    bN = cfg.microBSPos(b,2);   % North = col2
     bE = cfg.microBSPos(b,1);   % East  = col1
-    plot(db.axMap, bN, bE, '^', ...
+    bN = cfg.microBSPos(b,2);   % North = col2
+    plot(db.axMap, bE, bN, '^', ...
         'Color',[0.3 0.7 1],'MarkerSize',11,'MarkerFaceColor',[0.3 0.7 1], ...
         'DisplayName',sprintf('BS %d',b));
-    text(db.axMap, bN+20, bE+20, sprintf('BS%d',b), 'Color',[0.3 0.7 1],'FontSize',8);
+    text(db.axMap, bE+20, bN+20, sprintf('BS%d',b), 'Color',[0.3 0.7 1],'FontSize',8);
 end
 
 db.colors = lines(N);
@@ -94,13 +94,13 @@ for k=1:N
     db.hMapMarker(k)  = plot(db.axMap,NaN,NaN,'o','Color',db.colors(k,:), ...
         'MarkerSize',9,'MarkerFaceColor',db.colors(k,:),'DisplayName',sprintf('UAV %d',k));
 end
-xlabel(db.axMap,'North (m)','Color','w');
-ylabel(db.axMap,'East (m)','Color','w');
+xlabel(db.axMap,'East (m)','Color','w');
+ylabel(db.axMap,'North (m)','Color','w');
 title(db.axMap,'Aerial View — AoI uncertainty radius','Color','w','FontWeight','bold');
 legend(db.axMap,'TextColor','w','Color',[0.10 0.11 0.14],'Location','northwest','FontSize',7);
 % Axis limits match the heatmap exactly (no distortion, no equal-axis stretch)
-xlim(db.axMap, mapGrid.mapXlim);
-ylim(db.axMap, mapGrid.mapYlim);
+xlim(db.axMap, mapGrid.mapYlim);   % East range
+ylim(db.axMap, mapGrid.mapXlim);   % North range
 db.heatmap = struct('XG',mapGrid.XG,'YG',mapGrid.YG, ...
     'Z',zeros(size(mapGrid.XG)),'rhoMap',rhoMap);
 db.posNorthHist=cell(N,1); db.posEastHist=cell(N,1);
