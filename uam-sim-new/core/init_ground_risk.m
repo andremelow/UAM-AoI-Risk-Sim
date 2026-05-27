@@ -3,19 +3,29 @@ function [rhoMap, mapGrid] = init_ground_risk(cfg)
 %
 %  Extracted from monolith section 4 (SPATIAL RISK HEATMAP).
 
-half     = cfg.corridorLength / 2;
-margin   = max(200, cfg.corridorLength * 0.15);   % 15% margin
-% Expand limits to include all BS positions
-% builder exports microBSPos as [East, North, Alt] → North=col2, East=col1
+% Collect all route endpoint coordinates to determine grid extents.
+% cfg.routes is guaranteed to exist (validate_uam_config fills it).
+allNorth = zeros(1, 2*numel(cfg.routes));
+allEast  = zeros(1, 2*numel(cfg.routes));
+for r = 1:numel(cfg.routes)
+    allNorth(2*r-1) = cfg.routes(r).start(1);
+    allNorth(2*r)   = cfg.routes(r).goal(1);
+    allEast(2*r-1)  = cfg.routes(r).start(2);
+    allEast(2*r)    = cfg.routes(r).goal(2);
+end
+span     = max(max(allNorth) - min(allNorth), max(allEast) - min(allEast));
+span     = max(span, cfg.corridorLength);          % minimum span fallback
+margin   = max(200, span * 0.15);
+cellSize = max(20, round(span / 60));
+
 bsNorth  = cfg.microBSPos(:,2)';   % North coords of BSs
 bsEast   = cfg.microBSPos(:,1)';   % East  coords of BSs
-xMin     = min([-(half + margin),  bsNorth - margin]);
-xMax     = max([ (half + margin),  bsNorth + margin]);
-yMin     = min([-margin,           bsEast  - margin]);
-yMax     = max([ margin,           bsEast  + margin]);
+xMin     = min([allNorth - margin, bsNorth - margin]);
+xMax     = max([allNorth + margin, bsNorth + margin]);
+yMin     = min([allEast  - margin, bsEast  - margin]);
+yMax     = max([allEast  + margin, bsEast  + margin]);
 mapXlim  = [xMin, xMax];
 mapYlim  = [yMin, yMax];
-cellSize = max(20, round(cfg.corridorLength / 60));
 hmapZ    = -10;
 
 xVec = (mapXlim(1)+cellSize/2) : cellSize : (mapXlim(2)-cellSize/2);

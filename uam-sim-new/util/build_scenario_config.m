@@ -13,8 +13,22 @@ cfg.sched_alpha      = 0.5;
 cfg.csvExport        = false;
 cfg.csvDir           = 'csv_export';
 
-cfg.numDrones       = 5;
-cfg.corridorLength  = 30000;
+%% ---- Routes (fleet groups with individual entry/exit) ----------------
+% cfg.numDrones is auto-computed as sum([cfg.routes.numDrones]).
+% Per-drone flight time = norm(goal - start) / cfg.speedVal.
+
+cfg.routes(1).numDrones = 3;
+cfg.routes(1).start     = [-15000   0];   % [North, East] entry
+cfg.routes(1).goal      = [ 15000   0];   % [North, East] exit
+cfg.routes(1).label     = 'Route 1';
+
+cfg.routes(2).numDrones = 2;
+cfg.routes(2).start     = [-15000 -200];
+cfg.routes(2).goal      = [ 15000  200];
+cfg.routes(2).label     = 'Route 2';
+
+% Reference speed and corridor length (first route)
+cfg.corridorLength  = norm(cfg.routes(1).goal - cfg.routes(1).start);
 cfg.updateRate      = 15;
 cfg.speedVal        = 15;
 cfg.flightTime      = cfg.corridorLength / cfg.speedVal;
@@ -32,7 +46,7 @@ cfg.r_min           = 10;
 cfg.k_aoi           = 0.5;
 cfg.dronesPerSlot   = 1;
 
-cfg.droneEastPos    = 0;
+cfg.droneEastPos    = 0;   % legacy — overridden by cfg.routes
 cfg.minStartDelay   = 2;
 cfg.maxStartDelay   = 450;
 

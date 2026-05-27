@@ -105,6 +105,33 @@ for i = 1:numel(fields)
     end
 end
 
+% --- Routes expansion ---
+% If cfg.routes is absent, synthesise a single route from legacy corridor params.
+% If cfg.routes is present, recompute cfg.numDrones as the sum of route counts.
+if ~isfield(cfg, 'routes') || isempty(cfg.routes)
+    half = cfg.corridorLength / 2;
+    cfg.routes(1).numDrones = cfg.numDrones;
+    cfg.routes(1).start     = [-half, cfg.droneEastPos];
+    cfg.routes(1).goal      = [ half, cfg.droneEastPos];
+    cfg.routes(1).label     = 'Route 1';
+else
+    % Validate and fill defaults for each route
+    for r = 1:numel(cfg.routes)
+        if ~isfield(cfg.routes(r), 'start') || ~isfield(cfg.routes(r), 'goal')
+            error('UAM:config', 'cfg.routes(%d) must have .start and .goal fields.', r);
+        end
+        if ~isfield(cfg.routes(r), 'label')
+            cfg.routes(r).label = sprintf('Route %d', r);
+        end
+        if ~isfield(cfg.routes(r), 'numDrones') || cfg.routes(r).numDrones < 1
+            cfg.routes(r).numDrones = 1;
+        end
+    end
+    cfg.numDrones = sum([cfg.routes.numDrones]);
+    % Keep corridorLength consistent with first route for speedVal computation
+    cfg.corridorLength = norm(cfg.routes(1).goal(:)' - cfg.routes(1).start(:)');
+end
+
 % --- Validate videoModel ---
 cfg.videoModel = lower(strtrim(cfg.videoModel));
 if ~ismember(cfg.videoModel, {'atomic','gop'})

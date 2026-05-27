@@ -114,6 +114,7 @@ canvas#map{flex:1;display:block;cursor:crosshair;background:#111827}
 <div class="sidebar">
   <div class="tabs">
     <button class="tab on" onclick="switchTab('general',this)">General</button>
+    <button class="tab" onclick="switchTab('routes',this)">Routes</button>
     <button class="tab" onclick="switchTab('arrival',this)">Arrival</button>
     <button class="tab" onclick="switchTab('sched',this)">Sched</button>
     <button class="tab" onclick="switchTab('infra',this)">gNBs</button>
@@ -160,6 +161,32 @@ canvas#map{flex:1;display:block;cursor:crosshair;background:#111827}
       <div class="field"><label>Core</label><input type="number" id="latCore" value="2"></div>
     </div>
     <div class="field"><label>Video</label><input type="number" id="latVideo" value="10"></div>
+  </div>
+
+  <!-- ══════════ ROUTES ══════════ -->
+  <div id="panel-routes" class="panel">
+    <div class="sec">Fleet routes <span class="sec-line"></span></div>
+    <div class="hint">Each route is a drone group with its own entry and exit points. <strong>cfg.numDrones</strong> is auto-computed as the sum of all route counts.</div>
+    <div class="btn-row" style="margin-top:8px">
+      <button class="btn btn-pri" onclick="addRoute()">+ Add route</button>
+      <span style="font-size:11px;color:var(--txt2);margin-left:6px;line-height:26px">Total: <strong id="routeTotal">5</strong> drones</span>
+    </div>
+    <div style="overflow-x:auto">
+    <table class="inf-table" style="font-size:10px;min-width:420px">
+      <thead>
+        <tr>
+          <th style="width:14px">#</th>
+          <th>Label</th>
+          <th style="width:46px">Drones</th>
+          <th>Start&nbsp;N</th><th>Start&nbsp;E</th>
+          <th>Goal&nbsp;N</th><th>Goal&nbsp;E</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="routeTbody"></tbody>
+    </table>
+    </div>
+    <div class="hint" style="margin-top:6px">Coordinates in metres (NED). Routes appear as coloured arrows on the map.</div>
   </div>
 
   <!-- ══════════ ARRIVAL MODEL ══════════ -->
@@ -444,6 +471,7 @@ const S={
   bs:[[-800,0,-30],[0,0,-30],[800,0,-30]], // microBSPos: [N,E,D]
   master:[0,0,-60],
   randHS:[], manualHS:[],
+  routes:[{label:'Route 1',numDrones:5,startN:0,startE:-1500,goalN:0,goalE:1500,color:'#3b82f6'}],
   view:{cx:0,cy:0,scale:1},
   drag:false, lastMouse:null
 };
@@ -754,20 +782,35 @@ function renderMap(){
     ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();
   }
 
-  // Corridor — runs along East axis (horizontal), droneEastPos = North offset (vertical)
-  const cLen=parseFloat(gv('corridorLength'))||3000;
-  const nOff=parseFloat(gv('droneEast'))||0;   // North offset of corridor (droneEastPos)
-  const c1=w2c(nOff, -cLen/2), c2=w2c(nOff, cLen/2);
-  ctx.setLineDash([6,4]);
-  ctx.strokeStyle='rgba(148,163,184,0.5)'; ctx.lineWidth=1.5;
-  ctx.beginPath();ctx.moveTo(c1.x,c1.y);ctx.lineTo(c2.x,c2.y);ctx.stroke();
-  ctx.setLineDash([]);
-  // Arrows pointing right (+East direction)
-  ctx.fillStyle='rgba(148,163,184,0.4)';
-  for(let e=-cLen/2+200;e<cLen/2;e+=300){
-    const p=w2c(nOff, e);
-    ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p.x-10,p.y-5);ctx.lineTo(p.x-10,p.y+5);ctx.fill();
-  }
+  // Routes — each drawn as a coloured dashed arrow with start/goal dots and label
+  const ROUTE_CLR=['#3b82f6','#f59e0b','#10b981','#a78bfa','#f87171','#2dd4bf','#fb923c','#e879f9'];
+  S.routes.forEach((rt,i)=>{
+    const clr=rt.color||ROUTE_CLR[i%ROUTE_CLR.length];
+    const p1=w2c(rt.startN,rt.startE), p2=w2c(rt.goalN,rt.goalE);
+    const dx=p2.x-p1.x, dy=p2.y-p1.y, len=Math.hypot(dx,dy)||1;
+    const ux=dx/len, uy=dy/len;
+    ctx.setLineDash([6,4]);
+    ctx.strokeStyle=clr; ctx.lineWidth=2; ctx.globalAlpha=0.75;
+    ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha=1;
+    // Direction arrows along route
+    ctx.fillStyle=clr+'99';
+    [0.25,0.5,0.75].forEach(t=>{
+      const px=p1.x+t*dx, py=p1.y+t*dy;
+      ctx.beginPath();ctx.moveTo(px,py);
+      ctx.lineTo(px-10*ux+5*uy,py-10*uy-5*ux);
+      ctx.lineTo(px-10*ux-5*uy,py-10*uy+5*ux);
+      ctx.fill();
+    });
+    // Start dot
+    ctx.fillStyle=clr; ctx.strokeStyle='#111827'; ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.arc(p1.x,p1.y,5,0,Math.PI*2);ctx.fill();ctx.stroke();
+    // Goal dot (larger)
+    ctx.beginPath();ctx.arc(p2.x,p2.y,6,0,Math.PI*2);ctx.fill();ctx.stroke();
+    // Label at midpoint
+    ctx.fillStyle=clr; ctx.font='bold 10px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(`${rt.label||'R'+(i+1)} ×${rt.numDrones}`,(p1.x+p2.x)/2,(p1.y+p2.y)/2-9);
+  });
 
   // Random hotspots — h=[North, East, amp, sigma] → w2c(North, East)
   S.randHS.forEach(h=>{
@@ -950,7 +993,8 @@ function collectConfig(){
     routingFallSpeed:gn('routingFallSpeed'),
     routingSheltering:gn('routingSheltering'),
     routingI:gn('routingI'),
-    routingI0:gn('routingI0')
+    routingI0:gn('routingI0'),
+    routes:S.routes.map(rt=>({...rt}))
   };
   switch(arrModel){
     case 'nhpp':
@@ -1074,6 +1118,17 @@ cfg.routing.uav_fall_speed = ${cfg.routingFallSpeed};
 cfg.routing.I              = ${cfg.routingI};
 cfg.routing.I0             = ${cfg.routingI0};
 cfg.routing.uav_sheltering = ${cfg.routingSheltering};`;
+  // Routes block — always emitted; numDrones auto-computed by validate_uam_config
+  const totalDrones=cfg.routes.reduce((s,r)=>s+(+r.numDrones||0),0);
+  const r0=cfg.routes[0]||{startN:0,startE:-(cfg.corridorLength/2),goalN:0,goalE:cfg.corridorLength/2};
+  const refLen=Math.hypot(r0.goalN-r0.startN,r0.goalE-r0.startE)||cfg.corridorLength||3000;
+  const routesBlock=`%% ---- Routes (fleet groups with individual entry/exit) -----------
+% cfg.numDrones is auto-computed as sum([cfg.routes.numDrones]).
+% Per-drone flight time = norm(goal - start) / cfg.speedVal.
+${cfg.routes.map((rt,i)=>`cfg.routes(${i+1}).numDrones = ${+rt.numDrones||1};
+cfg.routes(${i+1}).start     = [${rt.startN}  ${rt.startE}];   % [North, East]
+cfg.routes(${i+1}).goal      = [${rt.goalN}  ${rt.goalE}];   % [North, East]
+cfg.routes(${i+1}).label     = '${(rt.label||'Route '+(i+1)).replace(/'/g,"''")}';`).join('\n')}`;
   const code=`function cfg = build_scenario_config()
 %% Auto-generated by UAM Scenario Builder (web)
 %% ${new Date().toISOString()}
@@ -1085,8 +1140,10 @@ arrModel = '${cfg.arrModel}';
 cfg.schedulingPolicy = '${cfg.schedPolicy}';
 ${alphaLine}
 
-cfg.numDrones       = ${cfg.numDrones};
-cfg.corridorLength  = ${cfg.corridorLength};
+${routesBlock}
+
+cfg.numDrones       = ${totalDrones};   % auto-computed by validate_uam_config
+cfg.corridorLength  = ${refLen.toFixed(1)};   % first route length (for speed)
 cfg.flightTime      = ${cfg.flightTime};
 cfg.updateRate      = ${cfg.updateRate};
 cfg.speedVal        = cfg.corridorLength / cfg.flightTime;
@@ -1103,7 +1160,7 @@ cfg.r_min           = ${cfg.rMin};
 cfg.k_aoi           = ${cfg.kAoi};
 cfg.dronesPerSlot   = ${cfg.dronesPerSlot};
 
-cfg.droneEastPos    = ${cfg.droneEast};
+cfg.droneEastPos    = ${cfg.droneEast};   % legacy — overridden by cfg.routes
 cfg.minStartDelay   = ${cfg.delayMin};
 cfg.maxStartDelay   = ${cfg.delayMax};
 
@@ -1159,9 +1216,10 @@ function updateSummary(cfg){
   const routingInfo=cfg.routingMode==='risk_astar'
     ?`risk_astar (w_d=${cfg.routingWd.toFixed(2)}, w_r=${cfg.routingWr.toFixed(2)})`
     :'static';
+  const totalDrones=cfg.routes.reduce((s,r)=>s+(+r.numDrones||0),0);
+  const routesSummary=cfg.routes.map((r,i)=>`R${i+1}:${r.numDrones}`).join(' ');
   document.getElementById('summaryBox').textContent=
-    `${cfg.numDrones} drones  |  ${cfg.bs.length} gNBs  |  `+
-    `${cfg.numRandHS} rand hotspots + ${cfg.manualHS.length} manual\n`+
+    `${totalDrones} drones  |  ${cfg.routes.length} route(s): ${routesSummary}  |  ${cfg.bs.length} gNBs\n`+
     `policy: ${cfg.schedPolicy}${cfg.schedPolicy==='hybrid'?' (α='+cfg.schedAlpha.toFixed(2)+')':''}`+
     `  |  arrival: ${cfg.arrModel}\n`+
     `w=[${cfg.wUnc.toFixed(2)}, ${cfg.wMap.toExponential(1)}, ${cfg.wVid.toFixed(1)}]  |  seed ${cfg.randSeed}\n`+
@@ -1241,6 +1299,56 @@ function loadCSV(evt){
     updateDetSpacing(); evt.target.value='';
   };
   reader.readAsText(file);
+}
+
+// ── Routes ───────────────────────────────────────────────────────
+const ROUTE_PALETTE=['#3b82f6','#f59e0b','#10b981','#a78bfa','#f87171','#2dd4bf','#fb923c','#e879f9'];
+
+function addRoute(){
+  const i=S.routes.length;
+  const prev=S.routes[i-1]||{startN:0,startE:-1500,goalN:0,goalE:1500};
+  S.routes.push({
+    label:'Route '+(i+1),
+    numDrones:3,
+    startN:prev.startN+(i>0?200:0),
+    startE:prev.startE,
+    goalN:prev.goalN+(i>0?200:0),
+    goalE:prev.goalE,
+    color:ROUTE_PALETTE[i%ROUTE_PALETTE.length]
+  });
+  renderRoutesTable(); syncDroneCount(); renderMap();
+}
+
+function renderRoutesTable(){
+  const tbody=document.getElementById('routeTbody');
+  if(!tbody) return;
+  tbody.innerHTML=S.routes.map((rt,i)=>`
+    <tr>
+      <td><span style="color:${rt.color||ROUTE_PALETTE[i%ROUTE_PALETTE.length]};font-weight:700">${i+1}</span></td>
+      <td><input type="text" value="${(rt.label||'').replace(/"/g,'&quot;')}" style="width:54px"
+          onchange="S.routes[${i}].label=this.value;renderMap()"></td>
+      <td><input type="number" value="${rt.numDrones}" min="1" style="width:42px"
+          onchange="S.routes[${i}].numDrones=+this.value;syncDroneCount();renderMap()"></td>
+      <td><input type="number" value="${rt.startN}" style="width:54px"
+          onchange="S.routes[${i}].startN=+this.value;renderMap()"></td>
+      <td><input type="number" value="${rt.startE}" style="width:54px"
+          onchange="S.routes[${i}].startE=+this.value;renderMap()"></td>
+      <td><input type="number" value="${rt.goalN}" style="width:54px"
+          onchange="S.routes[${i}].goalN=+this.value;renderMap()"></td>
+      <td><input type="number" value="${rt.goalE}" style="width:54px"
+          onchange="S.routes[${i}].goalE=+this.value;renderMap()"></td>
+      <td><button class="btn btn-dan" style="padding:2px 6px;font-size:10px"
+          onclick="S.routes.splice(${i},1);renderRoutesTable();syncDroneCount();renderMap()">×</button></td>
+    </tr>`).join('');
+  syncDroneCount();
+}
+
+function syncDroneCount(){
+  const total=S.routes.reduce((s,r)=>s+(+r.numDrones||0),0);
+  const el=document.getElementById('routeTotal');
+  if(el) el.textContent=total;
+  const nd=document.getElementById('numDrones');
+  if(nd) nd.value=total;
 }
 
 // ── Import .m ────────────────────────────────────────────────────
@@ -1430,6 +1538,38 @@ function parseMatlabConfig(raw, fname){
     if(nums.length>=4) S.manualHS.push(nums.slice(0,4));
   });
 
+  // ── Routes: cfg.routes(i).numDrones / .start / .goal / .label ───
+  {
+    const idxSet=new Set([...src.matchAll(/cfg\.routes\s*\(\s*(\d+)\s*\)/g)].map(m=>+m[1]));
+    const parsed=[];
+    [...idxSet].sort((a,b)=>a-b).forEach(idx=>{
+      const nm=src.match(new RegExp('cfg\\.routes\\s*\\(\\s*'+idx+'\\s*\\)\\.numDrones\\s*=\\s*(\\d+)'));
+      const sm=src.match(new RegExp('cfg\\.routes\\s*\\(\\s*'+idx+'\\s*\\)\\.start\\s*=\\s*\\[([^\\]]+)\\]'));
+      const gm=src.match(new RegExp('cfg\\.routes\\s*\\(\\s*'+idx+'\\s*\\)\\.goal\\s*=\\s*\\[([^\\]]+)\\]'));
+      const lm=src.match(new RegExp("cfg\\.routes\\s*\\(\\s*"+idx+"\\s*\\)\\.label\\s*=\\s*'([^']+)'"));
+      const sn=sm?sm[1].trim().split(/\s+/).map(parseFloat):[0,-1500];
+      const gn=gm?gm[1].trim().split(/\s+/).map(parseFloat):[0,1500];
+      parsed.push({
+        label: lm?lm[1]:'Route '+idx,
+        numDrones: nm?+nm[1]:1,
+        startN:sn[0]||0, startE:sn[1]||0,
+        goalN:gn[0]||0,  goalE:gn[1]||0,
+        color:ROUTE_PALETTE[(idx-1)%ROUTE_PALETTE.length]
+      });
+    });
+    if(parsed.length>0){
+      S.routes=parsed;
+    } else {
+      // Fall back to legacy corridorLength / droneEastPos
+      const cLen=numField('corridorLength')||3000;
+      const east=numField('droneEastPos')||0;
+      S.routes=[{label:'Route 1',numDrones:numField('numDrones')||5,
+                 startN:0,startE:-cLen/2,goalN:0,goalE:cLen/2,color:ROUTE_PALETTE[0]}];
+    }
+    renderRoutesTable();
+    syncDroneCount();
+  }
+
   // ── Refresh UI ────────────────────────────────────────────────────
   renderHSList();
   regenRandHS();
@@ -1449,6 +1589,7 @@ function showToast(msg){
 const ro=new ResizeObserver(resizeCanvas);
 ro.observe(canvas.parentElement);
 renderBSTable();
+renderRoutesTable();
 regenRandHS();
 updateDetSpacing();
 setTimeout(resizeCanvas,100);

@@ -24,8 +24,7 @@ function traj = route_risk_astar(infra, rhoMap, mapGrid, cfg, drone_id)
 %     infra    : struct from init_scenario (fields: startSlots, endSlots, …)
 %     rhoMap   : [nY x nX] density field from init_ground_risk
 %     mapGrid  : struct from init_ground_risk (XG, YG, deltaA, …)
-%     cfg      : full simulation config; uses cfg.routing, cfg.corridorLength,
-%                cfg.droneEastPos, cfg.speedVal, cfg.updateRate
+%     cfg      : full simulation config; uses cfg.routing, cfg.speedVal, cfg.updateRate
 %     drone_id : scalar integer drone index (1..N)
 %
 %   Output
@@ -41,10 +40,9 @@ yVec = mapGrid.YG(:, 1);   % East  cell-centre coords, length nY
 % Normalised ground-risk cost matrix
 K_norm = compute_risk_map(rhoMap, mapGrid, routing);
 
-% Corridor start / goal in world coords [North, East]
-half    = cfg.corridorLength / 2;
-p_start = [-half,  cfg.droneEastPos];
-p_goal  = [ half,  cfg.droneEastPos];
+% Per-drone start / goal from route lookup tables built by init_scenario
+p_start = infra.droneStart(drone_id, :);
+p_goal  = infra.droneGoal(drone_id, :);
 
 % Run A*
 t_astar = tic;

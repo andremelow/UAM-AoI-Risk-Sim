@@ -1,22 +1,42 @@
 function [scene, drones, infra] = init_scenario(cfg)
 % INIT_SCENARIO  Creates uavScenario, base stations, and drone platforms.
 %
-%  Extracted from monolith sections 1–5.
+%  Supports multiple routes via cfg.routes (struct array with .numDrones,
+%  .start [North,East], .goal [North,East], .label per entry).
+%  validate_uam_config expands legacy corridorLength/droneEastPos to a
+%  single-entry cfg.routes when the field is absent, so backward compat
+%  is fully preserved.
 %
-%  Reproducibility: uses cfg.rng_seed (default 42 via validate_uam_config)
-%  instead of rng('shuffle'), so different runs of the same config produce
-%  identical drone arrival times and trajectories. This is essential for
-%  parametric sweeps where you want to isolate the effect of the swept
-%  parameter from arrival-time noise.
+%  Per-drone flight time = norm(goal − start) / cfg.speedVal, so drones
+%  on shorter routes land earlier than drones on longer routes.
 
 N = cfg.numDrones;
 
-% --- Scene ---
-% StopTime = last drone landing + 2-slot buffer
-[startTimes, arrivalMeta] = generate_arrival_times(cfg);
-endTimes   = startTimes + cfg.flightTime;
-stopTime   = max(endTimes) + 2 / cfg.updateRate;
+% --- Build per-drone route lookup tables from cfg.routes ---
+droneRoute = zeros(N, 1);
+droneStart = zeros(N, 2);   % [North, East]
+droneGoal  = zeros(N, 2);
+idx = 0;
+for r = 1:numel(cfg.routes)
+    rt = cfg.routes(r);
+    for k = 1:rt.numDrones
+        idx = idx + 1;
+        droneRoute(idx)    = r;
+        droneStart(idx, :) = rt.start(:)';
+        droneGoal(idx, :)  = rt.goal(:)';
+    end
+end
 
+% --- Arrival times (global, covers all routes) ---
+[startTimes, arrivalMeta] = generate_arrival_times(cfg);
+
+% --- Per-drone flight time from route length and global speed ---
+routeLen    = sqrt(sum((droneGoal - droneStart).^2, 2));
+flightTimes = routeLen / cfg.speedVal;
+endTimes    = startTimes + flightTimes;
+stopTime    = max(endTimes) + 2 / cfg.updateRate;
+
+% --- Scene ---
 scene = uavScenario( ...
     UpdateRate   = cfg.updateRate, ...
     StopTime     = stopTime, ...
@@ -29,24 +49,20 @@ for i = 1:size(cfg.microBSPos, 1)
 end
 
 % --- Drone platforms ---
-% NOTE: startTimes/endTimes were already computed above using the
-% deterministic seeded RNG inside generate_arrival_times. We do NOT
-% call rng('shuffle') or generate_arrival_times again — that would
-% (a) destroy reproducibility across sweep runs and (b) produce a
-% different startTimes vector than the one used to compute stopTime.
+% NOTE: startTimes/endTimes were computed with a seeded RNG inside
+% generate_arrival_times — do NOT call it again here (reproducibility).
 drones = cell(N, 1);
 for k = 1:N
-    half = cfg.corridorLength / 2;
-    p1   = [-half  cfg.droneEastPos  -60];
-    p2   = [ half  cfg.droneEastPos  -60];
+    p1   = [droneStart(k,1), droneStart(k,2), -60];
+    p2   = [droneGoal(k,1),  droneGoal(k,2),  -60];
     traj = waypointTrajectory([p1; p2], ...
            TimeOfArrival=[startTimes(k) endTimes(k)]);
     drones{k} = uavPlatform("UAV"+k, scene, Trajectory=traj);
     updateMesh(drones{k},"quadrotor",{4},[.2 .2 .2],[0 0 0],[1 0 0 0]);
 end
 
-fprintf('[Arrival] model=%-14s  N=%d  seed=%d\n', ...
-        arrivalMeta.model, N, cfg.rng_seed);
+fprintf('[Arrival] model=%-14s  N=%d  routes=%d  seed=%d\n', ...
+        arrivalMeta.model, N, numel(cfg.routes), cfg.rng_seed);
 
 setup(scene);
 
@@ -57,6 +73,9 @@ infra.endTimes    = endTimes;
 infra.startSlots  = round(startTimes * cfg.updateRate);
 infra.endSlots    = round(endTimes   * cfg.updateRate);
 infra.arrivalMeta = arrivalMeta;
+infra.droneRoute  = droneRoute;
+infra.droneStart  = droneStart;
+infra.droneGoal   = droneGoal;
 
 plCfg = nrPathLossConfig;
 plCfg.Scenario = "UMi";
