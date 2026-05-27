@@ -1,0 +1,875 @@
+---
+title: "UAM-AoI-Risk · Experiment BI"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: scroll
+    css: styles.css
+    navbar:
+      - {title: "UAM-AoI-Risk", align: left}
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+# Source aggregator if present alongside dashboard
+agg_script <- "aggregate_sim_data.R"
+if (file.exists(agg_script)) source(agg_script, local=TRUE)
+
+library(flexdashboard); library(shiny); library(dplyr); library(tidyr)
+library(ggplot2); library(plotly); library(DT); library(readr)
+library(purrr); library(stringr); library(forcats); library(scales)
+
+POL_COLORS <- c("round-robin"="#378ADD","pf-classic"="#D85A30",
+                "aoi-pure"="#1D9E75","risk-aware"="#7F77DD","lower_bound"="#BA7517")
+POL_SHAPES <- c("round-robin"=16,"pf-classic"=17,"aoi-pure"=15,"risk-aware"=18,"lower_bound"=4)
+POL_LINES  <- c("round-robin"="solid","pf-classic"="dashed","aoi-pure"="solid",
+                "risk-aware"="dotdash","lower_bound"="longdash")
+
+theme_kadota <- function() {
+  theme_minimal(base_family="mono",base_size=10) +
+  theme(
+    plot.background  = element_rect(fill="#161b22",colour=NA),
+    panel.background = element_rect(fill="#0d1117",colour=NA),
+    panel.grid.major = element_line(colour="#21262d",linewidth=0.35),
+    panel.grid.minor = element_blank(),
+    panel.border     = element_rect(colour="#30363d",fill=NA,linewidth=0.5),
+    axis.text        = element_text(colour="#8b949e",size=8),
+    axis.title       = element_text(colour="#c9d1d9",size=9,face="bold"),
+    plot.title       = element_text(colour="#e6edf3",size=11,face="bold"),
+    plot.subtitle    = element_text(colour="#8b949e",size=8),
+    legend.background= element_rect(fill="#161b22",colour="#30363d",linewidth=0.4),
+    legend.text      = element_text(colour="#c9d1d9",size=8),
+    legend.title     = element_text(colour="#8b949e",size=7.5,face="bold"),
+    legend.key       = element_rect(fill=NA,colour=NA),
+    legend.key.width = unit(1.8,"lines"),
+    strip.background = element_rect(fill="#21262d",colour=NA),
+    strip.text       = element_text(colour="#c9d1d9",size=8.5,face="bold"),
+    plot.margin      = margin(8,12,8,8)
+  )
+}
+
+# ── Load all CSVs from a directory ──────────────────────────────────────────
+load_dir <- function(dir_path) {
+  # ── Fast path: pre-aggregated agg/ files (run aggregate_sim_data.py first)
+  agg_dir <- file.path(dir_path, "agg")
+  if (dir.exists(agg_dir) && file.exists(file.path(agg_dir,"agg_runs.csv"))) {
+    message("[Dashboard] Loading pre-aggregated data from agg/ — fast mode")
+    sr <- function(f) tryCatch(read_csv(f,show_col_types=FALSE), error=function(e) NULL)
+    runs      <- sr(file.path(agg_dir,"agg_runs.csv"))
+    drones    <- sr(file.path(agg_dir,"agg_drone.csv"))
+    manifest  <- sr(file.path(agg_dir,"agg_manifest.csv"))
+    risk_time <- sr(file.path(agg_dir,"agg_risk_time.csv"))
+    cdf_data  <- sr(file.path(agg_dir,"agg_cdf.csv"))
+    if (!is.null(runs) && nrow(runs)>0) {
+      w_unc <- if("w_unc"%in%names(runs)) mean(as.numeric(runs$w_unc),na.rm=TRUE) else 0.33
+      w_vid <- if("w_vid"%in%names(runs)) mean(as.numeric(runs$w_vid),na.rm=TRUE) else 0.34
+      if (!"ewsaoi"%in%names(runs))
+        runs <- runs %>% mutate(ewsaoi = w_unc*mean_h1 + w_vid*mean_h2)
+      runs <- runs %>% mutate(
+        c2_pct           = round(as.numeric(c2_share)*100, 1),
+        frames_per_drone = as.numeric(total_frames)/pmax(as.integer(N),1),
+        fdr_c2           = as.numeric(total_c2_ok)/
+                           pmax(as.numeric(total_c2_ok)+as.numeric(total_c2_fail),1)
+      )
+    }
+    return(list(runs=runs, drones=drones, series=risk_time,
+                cdf=cdf_data, manifest=manifest, is_agg=TRUE))
+  }
+
+  # ── Slow path: raw CSVs (no agg/ found)
+  message("[Dashboard] No agg/ found — loading raw CSVs. Run aggregate_sim_data.py to speed up.")
+  empty <- list(runs=NULL,drones=NULL,series=NULL,cdf=NULL,manifest=NULL,is_agg=FALSE)
+  if (is.null(dir_path)||!dir.exists(dir_path)) return(empty)
+  files <- list.files(dir_path,pattern="\\.csv$",full.names=TRUE,recursive=FALSE)
+  if (!length(files)) return(empty)
+  sr <- function(f) tryCatch(read_csv(f,show_col_types=FALSE),error=function(e) NULL)
+  manifest   <- map_dfr(files[str_detect(files,"_manifest")], sr)
+  drone_files <- files[str_detect(files,"_drone_summary")]
+  drones <- bind_rows(compact(map(drone_files, function(f) {
+    d <- sr(f); if(is.null(d)) return(NULL)
+    run_id <- str_remove(basename(f),"_drone_summary\\.csv$")
+    d$run_id <- run_id
+    d$policy <- str_split(run_id,"_N")[[1]][1]
+    d$N <- as.integer(str_extract(run_id,"(?<=_N)\\d+"))
+    d
+  })))
+  if (is.null(drones)||nrow(drones)==0) return(empty)
+  mp <- if(!is.null(manifest)&&"run_id"%in%names(manifest)) manifest else data.frame()
+  w_unc_g <- if("w_unc"%in%names(mp)&&nrow(mp)>0) mean(as.numeric(mp$w_unc),na.rm=TRUE) else 0.33
+  w_vid_g <- if("w_vid"%in%names(mp)&&nrow(mp)>0) mean(as.numeric(mp$w_vid),na.rm=TRUE) else 0.34
+  runs <- drones %>%
+    group_by(run_id,policy,N) %>%
+    summarise(n_drones=n(), total_c2_ok=sum(slots_c2_ok), total_c2_fail=sum(slots_c2_fail),
+              total_vid_ok=sum(slots_vid_ok), total_vid_fail=sum(slots_vid_fail),
+              total_frames=sum(frames_delivered),
+              mean_h1=mean(ifelse(mean_h1>0.01,mean_h1,
+                (exit_slot-entry_slot)/pmax(slots_c2_ok,1)),na.rm=TRUE),
+              mean_h2=mean(ifelse(mean_h2>0.01,mean_h2,
+                (exit_slot-entry_slot)/pmax(frames_delivered,1)),na.rm=TRUE),
+              mean_r_vid=mean(suppressWarnings(as.numeric(mean_r_vid)),na.rm=TRUE),
+              mean_r_tot=mean(suppressWarnings(as.numeric(mean_r_tot)),na.rm=TRUE),
+              .groups="drop") %>%
+    mutate(ewsaoi=w_unc_g*mean_h1+w_vid_g*mean_h2,
+           c2_share=total_c2_ok/pmax(total_c2_ok+total_vid_ok,1),
+           c2_pct=round(c2_share*100,1),
+           frames_per_drone=total_frames/pmax(n_drones,1))
+  if("run_id"%in%names(mp)&&nrow(mp)>0) {
+    keep <- intersect(c("run_id","L_vid","w_coh","corridor_length","update_rate",
+                        "w_unc","w_map","w_vid","sim_slots"),names(mp))
+    runs <- left_join(runs,mp[,keep],by="run_id")
+  }
+  list(runs=runs,drones=drones,series=NULL,cdf=NULL,manifest=manifest,is_agg=FALSE)
+}
+
+
+# ── Lower bound (Kadota Algorithm 1 simplified) ────────────────────────────
+compute_lb <- function(N, K=1, p_s=0.9, w_unc=0.33, w_vid=0.34) {
+  # Kadota Theorem 2 lower bound on EWSAoI (not on h1 alone).
+  # EWSAoI = w_unc*h1 + w_vid*h2 — this is what the LB bounds.
+  # With 2N identical sources (C2 + video per drone), K=1, lambda=1:
+  #   q_i = min(1, K/(2N)) * p_s   (scheduling fraction * success prob)
+  #   LB_source = 1/q + 1           (per-source AoI contribution)
+  #   LB = (1/(2N)) * [N*(w_unc*(1/q+1)) + N*(w_vid*(1/q+1))]
+  #      = (w_unc + w_vid) * (1/q + 1)
+  q  <- min(1, K / (2*N)) * p_s
+  lb <- (w_unc + w_vid) * (1/max(q, 0.001) + 1)
+  lb
+}
+
+# ── Plot helpers ────────────────────────────────────────────────────────────
+dark_plotly <- function(p) {
+  ggplotly(p, tooltip="text") %>%
+    layout(paper_bgcolor="#161b22",plot_bgcolor="#0d1117",
+           font=list(color="#c9d1d9",family="monospace",size=11),
+           legend=list(bgcolor="#161b22",bordercolor="#30363d",borderwidth=1)) %>%
+    config(displayModeBar=FALSE)
+}
+no_data <- function(msg="Load CSV data and click Reload") {
+  plot_ly(x=0,y=0,type="scatter",mode="markers",marker=list(opacity=0),hoverinfo="none") %>%
+    layout(title=list(text=msg,font=list(color="#484f58",size=13),x=0.5),
+           paper_bgcolor="#161b22",plot_bgcolor="#0d1117",
+           xaxis=list(visible=FALSE),yaxis=list(visible=FALSE),showlegend=FALSE) %>%
+    config(displayModeBar=FALSE)
+}
+```
+
+Sidebar {.sidebar data-width=230}
+=====================================
+
+```{r}
+tags$h4("Data",style="color:#58a6ff;font-size:13px;margin:0 0 8px 0")
+textInput("csv_dir",NULL,value="csv_export",placeholder="path/to/csv_export/")
+actionButton("reload","Reload",
+  style="width:100%;background:#21262d;color:#58a6ff;border:1px solid #30363d;font-size:11px;padding:5px;border-radius:4px;margin-bottom:10px")
+tags$hr(style="border-color:#21262d;margin:6px 0")
+tags$h4("Filters",style="color:#58a6ff;font-size:13px;margin:0 0 8px 0")
+uiOutput("ui_pol"); uiOutput("ui_N"); uiOutput("ui_Lvid")
+tags$hr(style="border-color:#21262d;margin:6px 0")
+tags$h4("Axes",style="color:#58a6ff;font-size:13px;margin:0 0 8px 0")
+selectInput("xvar","X axis",
+  choices=c("N drones"="N","L_vid"="L_vid","corridor_km"="corridor_km"),selected="N")
+selectInput("yvar","Y axis",
+  choices=c("EWSAoI (weighted sum)"="ewsaoi",
+            "C2 AoI h1 (component)"="mean_h1",
+            "Video AoI h2 (component)"="mean_h2",
+            "C2 share %"="c2_pct","Frames/drone"="frames_per_drone",
+            "FDR C2"="fdr_c2"),selected="ewsaoi")
+checkboxInput("show_lb","Show lower bound",TRUE)
+checkboxInput("log_y","Log Y",FALSE)
+tags$hr(style="border-color:#21262d;margin:6px 0")
+tags$hr(style="border-color:#21262d;margin:6px 0")
+tags$p("Pre-process",style="color:#58a6ff;font-size:11px;font-weight:500;margin:0 0 5px 0")
+actionButton("run_agg","⚙ Aggregate CSVs",
+  style="width:100%;background:#162521;color:#3fb950;border:1px solid #1a4731;
+         font-size:11px;padding:4px;border-radius:4px;margin-bottom:3px")
+verbatimTextOutput("agg_log",placeholder=TRUE)
+tags$p("Run once per sweep for fast loading.",
+  style="color:#484f58;font-size:9px;margin:2px 0;font-family:monospace")
+tags$hr(style="border-color:#21262d;margin:6px 0")
+tags$p("UAM-AoI-Risk · INFOCOM",style="color:#484f58;font-size:9px;margin:0;font-family:monospace")
+```
+
+```{r, context="server"}
+# ── Run filter helper — handles '(all runs)' sentinel ────────────────────
+filter_run <- function(d, sel_run) {
+  if (is.null(d)||nrow(d)==0) return(d)
+  if (is.null(sel_run)||isTRUE(sel_run=="__all__")||!"run_id"%in%names(d)) return(d)
+  d %>% filter(run_id==sel_run)
+}
+
+# ── Aggregate button ─────────────────────────────────────────────────────
+agg_log_rv <- reactiveVal("")
+observeEvent(input$run_agg, {
+  dir <- isolate(input$csv_dir)
+  if (!dir.exists(dir)) { agg_log_rv("Directory not found."); return() }
+  if (!exists("aggregate_sim_data")) {
+    agg_log_rv("aggregate_sim_data.R not found.\nPlace it beside uam_dashboard.Rmd."); return()
+  }
+  agg_log_rv("Running...")
+  tryCatch({
+    res <- aggregate_sim_data(dir, verbose=FALSE)
+    agg_log_rv(sprintf("Done! %d runs.\nClick Reload.", nrow(res$runs)))
+  }, error=function(e) agg_log_rv(paste("Error:", conditionMessage(e))))
+})
+output$agg_log <- renderText(agg_log_rv())
+
+dat <- eventReactive(input$reload, { load_dir(input$csv_dir) },
+  ignoreNULL=FALSE, ignoreInit=FALSE)
+
+runs_r <- reactive({
+  d <- dat()$runs
+  if (is.null(d)||nrow(d)==0||!"policy"%in%names(d)) return(NULL)
+  d <- d %>% mutate(c2_pct = c2_share*100)
+  if (!is.null(input$sel_pol) && length(input$sel_pol)>0)
+    d <- d %>% filter(policy %in% input$sel_pol)
+  if (!is.null(input$sel_N) && input$sel_N!="all")
+    d <- d %>% filter(N==as.integer(input$sel_N))
+  if (!is.null(input$sel_Lvid) && input$sel_Lvid!="all" && "L_vid"%in%names(d))
+    d <- d %>% filter(L_vid==as.integer(input$sel_Lvid))
+  if (nrow(d)==0) return(NULL)
+  # Compute EWSAoI = w_unc*h1 + w_vid*h2 (the metric the LB actually bounds)
+  w_unc <- if("w_unc"%in%names(d)) mean(d$w_unc,na.rm=TRUE) else 0.33
+  w_vid <- if("w_vid"%in%names(d)) mean(d$w_vid,na.rm=TRUE) else 0.34
+  d <- d %>% mutate(ewsaoi = w_unc*mean_h1 + w_vid*mean_h2)
+  d
+})
+
+output$ui_pol <- renderUI({
+  d <- dat()$runs; if(is.null(d)||!"policy"%in%names(d)) return(NULL)
+  pols <- unique(d$policy)
+  checkboxGroupInput("sel_pol","Policies",choices=pols,selected=pols)
+})
+output$ui_N <- renderUI({
+  d <- dat()$runs; if(is.null(d)||!"N"%in%names(d)) return(NULL)
+  ns <- sort(unique(d$N))
+  selectInput("sel_N","N drones",choices=c("(all)"="all",ns),selected="all")
+})
+output$ui_Lvid <- renderUI({
+  d <- dat()$runs
+  if(is.null(d)||!"L_vid"%in%names(d)||all(is.na(d$L_vid))) return(NULL)
+  vs <- sort(unique(na.omit(d$L_vid)))
+  if(length(vs)<2) return(NULL)
+  selectInput("sel_Lvid","L_vid",choices=c("(all)"="all",vs),selected="all")
+})
+```
+
+Overview {data-icon="fa-chart-line"}
+=====================================
+
+Row {data-height=105}
+-------------------------------------
+
+### Runs
+```{r}
+renderValueBox({
+  d <- dat()$runs; n<-if(is.null(d)||nrow(d)==0) 0 else nrow(d)
+  valueBox(n,"Runs",icon="fa-database",color=if(n>0)"primary" else "warning")
+})
+```
+
+### Policies
+```{r}
+renderValueBox({
+  d <- dat()$runs
+  n<-if(is.null(d)||nrow(d)==0||!"policy"%in%names(d)) 0 else length(unique(d$policy))
+  valueBox(n,"Policies",icon="fa-code-branch",color="info")
+})
+```
+
+### Best h1
+```{r}
+renderValueBox({
+  d <- runs_r(); if(is.null(d)){valueBox("--","Best h1",color="warning");return()}
+  b <- d %>% arrange(mean_h1) %>% slice(1)
+  valueBox(sprintf("%.1f sl",b$mean_h1),paste0(b$policy," N=",b$N),icon="fa-trophy",color="success")
+})
+```
+
+### Best h2
+```{r}
+renderValueBox({
+  d <- runs_r(); if(is.null(d)){valueBox("--","Best h2",color="warning");return()}
+  b <- d %>% arrange(mean_h2) %>% slice(1)
+  valueBox(sprintf("%.1f sl",b$mean_h2),paste0(b$policy," N=",b$N),icon="fa-video",color="success")
+})
+```
+
+### N values
+```{r}
+renderValueBox({
+  d <- runs_r(); if(is.null(d)){valueBox("--","N values",color="warning");return()}
+  ns <- sort(unique(d$N))
+  valueBox(paste(ns,collapse=","),"N tested",icon="fa-helicopter",color="info")
+})
+```
+
+Row {data-height=480}
+-------------------------------------
+
+### Main sweep chart {data-width=680}
+```{r}
+renderPlotly({
+  d <- runs_r(); if(is.null(d)) return(no_data())
+  xv <- input$xvar%||%"N"; yv <- input$yvar%||%"mean_h1"
+  if(!xv%in%names(d)) xv<-"N"
+  if(!yv%in%names(d)) yv<-"mean_h1"
+  ylab <- switch(yv,
+    ewsaoi="EWSAoI = w_unc·h1 + w_vid·h2 (slots)",
+    mean_h1="C2 AoI h1 (slots) [component only]",
+    mean_h2="Video AoI h2 (slots) [component only]",
+    c2_pct="C2 slot share (%)",frames_per_drone="Frames/drone",fdr_c2="FDR C2",yv)
+  xlab <- switch(xv,N="Number of drones N",L_vid="Update length L_vid",
+                 corridor_km="Corridor length (km)",xv)
+  
+  d2 <- d %>% mutate(
+    policy=factor(policy,levels=intersect(names(POL_COLORS),unique(policy))),
+    xv=.data[[xv]], yv=.data[[yv]],
+    tip=sprintf("<b>%s</b><br>%s=%g<br>%s=%.2f",policy,xlab,xv,ylab,yv))
+  
+  # Add lower bound — ONLY valid when Y axis = EWSAoI (weighted sum)
+  # LB bounds EWSAoI = w_unc*h1 + w_vid*h2, not h1 or h2 individually.
+  lb_data <- NULL
+  if(isTRUE(input$show_lb) && yv=="ewsaoi" && "N"%in%names(d)) {
+    w_unc_v <- if("w_unc"%in%names(d)) mean(d$w_unc,na.rm=TRUE) else 0.33
+    w_vid_v  <- if("w_vid"%in%names(d)) mean(d$w_vid,na.rm=TRUE) else 0.34
+    ns <- sort(unique(d$N))
+    lb_vals <- sapply(ns, function(n) compute_lb(n, w_unc=w_unc_v, w_vid=w_vid_v))
+    xv_vals <- if(xv=="N") ns else rep(mean(d[[xv]],na.rm=TRUE),length(ns))
+    lb_data <- tibble(xv=xv_vals, yv=lb_vals,
+                      policy=factor("lower_bound",levels=names(POL_COLORS)),
+                      tip=sprintf("<b>Lower Bound (EWSAoI)</b><br>N=%d<br>LB=%.2f",ns,lb_vals))
+    d2 <- bind_rows(d2, lb_data)
+  } else if(isTRUE(input$show_lb) && yv!="ewsaoi") {
+    # Remind user: LB only shown for EWSAoI axis
+    showNotification("Lower bound is only shown when Y axis = EWSAoI (weighted sum).
+h1 and h2 individually can be below the LB — this is expected.", type="message", duration=5)
+  }
+  
+  p <- ggplot(d2,aes(x=xv,y=yv,colour=policy,shape=policy,linetype=policy,text=tip)) +
+    geom_line(linewidth=0.85,na.rm=TRUE) +
+    geom_point(size=3,na.rm=TRUE) +
+    scale_colour_manual(values=POL_COLORS,name="Policy",
+      breaks=intersect(names(POL_COLORS),levels(d2$policy))) +
+    scale_shape_manual(values=POL_SHAPES,name="Policy",
+      breaks=intersect(names(POL_SHAPES),levels(d2$policy))) +
+    scale_linetype_manual(values=POL_LINES,name="Policy",
+      breaks=intersect(names(POL_LINES),levels(d2$policy))) +
+    labs(x=xlab,y=ylab,title=paste(ylab,"vs",xlab),
+         subtitle="All policies · lower = better") +
+    theme_kadota()
+  if(isTRUE(input$log_y)) p <- p + scale_y_log10(labels=label_comma())
+  dark_plotly(p)
+})
+```
+
+### Policy ranking {data-width=280}
+```{r}
+renderPlotly({
+  d <- runs_r(); if(is.null(d)) return(no_data())
+  yv <- input$yvar%||%"mean_h1"; if(!yv%in%names(d)) yv<-"mean_h1"
+  rank_df <- d %>% group_by(policy) %>%
+    summarise(val=mean(.data[[yv]],na.rm=TRUE),.groups="drop") %>%
+    arrange(val) %>% mutate(policy=fct_reorder(policy,val),
+      tip=sprintf("<b>%s</b><br>%.2f",policy,val),
+      col=POL_COLORS[as.character(policy)])
+  plot_ly(rank_df,x=~val,y=~policy,type="bar",orientation="h",
+    text=~tip,hoverinfo="text",
+    marker=list(color=rank_df$col,line=list(color="#30363d",width=0.5))) %>%
+    layout(title=list(text="Ranking",font=list(color="#e6edf3",size=12)),
+           xaxis=list(title=yv,gridcolor="#21262d",color="#8b949e"),
+           yaxis=list(title="",gridcolor="#21262d",color="#c9d1d9"),
+           paper_bgcolor="#161b22",plot_bgcolor="#0d1117",
+           font=list(color="#c9d1d9",family="monospace"),showlegend=FALSE,
+           margin=list(l=90,r=10,t=40,b=40)) %>%
+    config(displayModeBar=FALSE)
+})
+```
+
+AoI Figures {data-icon="fa-chart-line"}
+=====================================
+
+Row {.tabset data-height=510}
+-------------------------------------
+
+### h1 × h2 Safety-Coherence Region
+```{r}
+renderPlotly({
+  d <- runs_r(); if(is.null(d)||!"mean_h2"%in%names(d)) return(no_data())
+  d2 <- d %>% filter(!is.na(mean_h2)) %>%
+    mutate(policy=factor(policy,levels=names(POL_COLORS)),
+           tip=sprintf("<b>%s</b><br>N=%d<br>h1=%.1f<br>h2=%.1f",policy,N,mean_h1,mean_h2))
+  p <- ggplot(d2,aes(x=mean_h1,y=mean_h2,colour=policy,shape=policy,text=tip)) +
+    geom_point(size=3.5,alpha=0.9) +
+    geom_path(aes(group=policy),linewidth=0.5,alpha=0.4,na.rm=TRUE) +
+    scale_colour_manual(values=POL_COLORS,name="Policy") +
+    scale_shape_manual(values=POL_SHAPES,name="Policy") +
+    labs(x="C2 AoI h1 (slots)",y="Video AoI h2 (slots)",
+         title="Safety-Coherence Region  S(W,rho)",
+         subtitle="Pareto frontier h1 vs h2 — each point = one run") +
+    theme_kadota()
+  dark_plotly(p)
+})
+```
+
+### EWSAoI vs N (scalability)
+```{r}
+renderPlotly({
+  d <- runs_r(); if(is.null(d)) return(no_data())
+  d2 <- d %>% mutate(policy=factor(policy,levels=names(POL_COLORS)),
+    ewsaoi=if("ewsaoi"%in%names(d)) ewsaoi else NA,
+    tip=sprintf("<b>%s</b><br>N=%d<br>EWSAoI=%.1f<br>h1=%.1f<br>h2=%.1f",
+                policy,N,ifelse(is.na(ewsaoi),NA,ewsaoi),mean_h1,mean_h2))
+  p <- ggplot(d2,aes(x=N,y=ifelse("ewsaoi"%in%names(d2),ewsaoi,mean_h1),
+                     colour=policy,shape=policy,linetype=policy,text=tip)) +
+    geom_line(linewidth=0.85,na.rm=TRUE) + geom_point(size=3,na.rm=TRUE) +
+    scale_colour_manual(values=POL_COLORS,name="Policy") +
+    scale_shape_manual(values=POL_SHAPES,name="Policy") +
+    scale_linetype_manual(values=POL_LINES,name="Policy") +
+    labs(x="Number of drones N",y="EWSAoI h1 (slots)",
+         title="EWSAoI vs N  — scalability",
+         subtitle="Scalability — fixed corridor, all policies") + theme_kadota()
+  dark_plotly(p)
+})
+```
+
+### Optimality ratio psi
+```{r}
+renderPlotly({
+  d <- runs_r(); if(is.null(d)) return(no_data())
+  ns <- sort(unique(d$N))
+  lb <- tibble(N=ns, lb=sapply(ns,compute_lb))
+  d2 <- d %>% left_join(lb,by="N") %>% filter(!is.na(lb),lb>0) %>%
+    mutate(ewsaoi=if("ewsaoi"%in%names(.)) ewsaoi else 0.33*mean_h1+0.34*mean_h2,
+           psi=ewsaoi/lb,
+           policy=factor(policy,levels=names(POL_COLORS)),
+           tip=sprintf("<b>%s</b><br>N=%d<br>psi=%.2f<br>EWSAoI=%.1f<br>LB=%.1f",
+                       policy,N,psi,ewsaoi,lb))
+  p <- ggplot(d2,aes(x=N,y=psi,colour=policy,shape=policy,linetype=policy,text=tip)) +
+    geom_hline(yintercept=1,colour="#BA7517",linewidth=0.8,linetype="longdash") +
+    geom_hline(yintercept=2,colour="#484f58",linewidth=0.5,linetype="dotted") +
+    geom_line(linewidth=0.85,na.rm=TRUE) + geom_point(size=3,na.rm=TRUE) +
+    annotate("text",x=-Inf,y=1.08,label="psi=1 (optimal)",
+             hjust=-0.05,colour="#BA7517",size=2.8,family="mono") +
+    scale_colour_manual(values=POL_COLORS,name="Policy") +
+    scale_shape_manual(values=POL_SHAPES,name="Policy") +
+    scale_linetype_manual(values=POL_LINES,name="Policy") +
+    labs(x="N drones",y="psi = EWSAoI / LB",
+         title="Optimality ratio psi",
+         subtitle="psi=1 optimal · psi=2 SRP upper bound") +
+    theme_kadota()
+  dark_plotly(p)
+})
+```
+
+### Slot allocation
+```{r}
+renderPlotly({
+  d <- runs_r(); if(is.null(d)) return(no_data())
+  d2 <- d %>% mutate(c2_pct=c2_share*100,
+    policy=factor(policy,levels=names(POL_COLORS)),
+    tip=sprintf("<b>%s</b><br>N=%d<br>C2=%.0f%%<br>Vid=%.0f%%",
+                policy,N,c2_pct,100-c2_pct))
+  p <- ggplot(d2,aes(x=factor(N),y=c2_pct,fill=policy,text=tip)) +
+    geom_col(position="dodge",width=0.7) +
+    geom_hline(yintercept=50,colour="#484f58",linewidth=0.5,linetype="dashed") +
+    scale_fill_manual(values=POL_COLORS,name="Policy") +
+    labs(x="N drones",y="C2 slot share (%)",
+         title="C2 vs Video slot allocation",
+         subtitle="50% = balanced · <50% = video-heavy · safety vs coherence") +
+    theme_kadota()
+  dark_plotly(p)
+})
+```
+
+Drone Detail {data-icon="fa-table"}
+=====================================
+
+Row {data-height=60}
+-------------------------------------
+
+```{r}
+uiOutput("ui_run_sel_row")
+```
+
+```{r, context="server"}
+output$ui_run_sel_row <- renderUI({
+  d <- dat()$drones; if(is.null(d)||!"run_id"%in%names(d)) return(NULL)
+  runs_avail <- unique(d$run_id)
+  div(style="display:flex;gap:12px;align-items:center;padding:8px 0",
+    tags$label("Run:", style="font-size:12px;color:var(--color-text-secondary)"),
+    selectInput("sel_run",NULL,
+      choices=c("(all runs)"="__all__", runs_avail),
+      selected=runs_avail[1],width="400px")
+  )
+})
+```
+
+Row {data-height=480}
+-------------------------------------
+
+### Per-drone metrics
+```{r}
+renderDT({
+  d <- dat()$drones; if(is.null(d)||is.null(input$sel_run)) return(NULL)
+  d2 <- d %>% filter(run_id==input$sel_run) %>%
+    mutate(fdr_c2=round(slots_c2_ok/pmax(slots_c2_ok+slots_c2_fail,1),3),
+           fdr_vid=round(slots_vid_ok/pmax(slots_vid_ok+slots_vid_fail,1),3),
+           flight=exit_slot-entry_slot,
+           h1_derived=round(flight/pmax(slots_c2_ok,1),2),
+           h2_derived=round(flight/pmax(frames_delivered,1),2),
+           h1_show=ifelse(mean_h1>0.01,round(mean_h1,2),h1_derived),
+           h2_show=ifelse(mean_h2>0.01,round(mean_h2,2),h2_derived),
+           across(where(is.double),~round(.x,2))) %>%
+    select(drone_id,entry_slot,exit_slot,flight,
+           slots_c2_ok,slots_vid_ok,fdr_c2,fdr_vid,
+           frames_delivered,h1_show,h2_show,mean_r_vid,mean_r_tot)
+  datatable(d2,
+    colnames=c("UAV","Entry","Exit","Flight","C2 ok","Vid ok","FDR C2","FDR Vid",
+               "Frames","h1","h2","R_vid","R_tot"),
+    options=list(pageLength=20,dom="Bfrtip",scrollX=TRUE),
+    style="bootstrap4",class="compact",filter="top") %>%
+    formatStyle(1:13,backgroundColor="#0d1117",color="#c9d1d9") %>%
+    formatStyle("h1_show",background=styleColorBar(c(0,200),"#1f4e79"),
+                backgroundSize="98% 60%",backgroundRepeat="no-repeat",backgroundPosition="center") %>%
+    formatStyle("fdr_c2",color=styleInterval(c(0.8,0.95),c("#f78166","#e3b341","#3fb950")))
+})
+```
+
+AoI Time Series {data-icon="fa-wave-square"}
+=====================================
+
+Row {data-height=520}
+-------------------------------------
+
+### C2 AoI sawtooth
+```{r}
+renderPlotly({
+  d <- dat()$series
+  if (is.null(d)||nrow(d)==0) return(no_data("No series data"))
+  is_agg <- isTRUE(dat()$is_agg)
+  h1_col <- if("h1_slots"%in%names(d)) "h1_slots" else if("h1_mean"%in%names(d)) "h1_mean" else return(no_data("No h1 column"))
+  d <- filter_run(d, input$sel_run)
+  if (nrow(d)==0) return(no_data("No data for this run"))
+  d <- d %>% mutate(slot_n=as.numeric(slot), h1_n=as.numeric(.data[[h1_col]]),
+                    lbl=if(is_agg) paste0(policy," N=",N) else paste0("UAV",drone_id))
+  if (!is_agg && "drone_id"%in%names(d)) d <- d %>% filter(as.integer(drone_id)<=8)
+  plot_ly(d, x=~slot_n, y=~h1_n, color=~lbl, type="scatter", mode="lines",
+          line=list(width=if(is_agg) 1.5 else 1),
+          hovertemplate="slot %{x}<br>h1=%{y:.1f} sl<extra>%{fullData.name}</extra>") %>%
+    layout(title=list(text=if(is_agg)"Mean C2 AoI over time (system)" else "AoI sawtooth evolution",
+                      font=list(color="#e6edf3",size=12)),
+           xaxis=list(title="Slot",gridcolor="#21262d",color="#8b949e"),
+           yaxis=list(title="h1 (slots)",gridcolor="#21262d",color="#8b949e"),
+           paper_bgcolor="#161b22",plot_bgcolor="#0d1117",
+           font=list(color="#c9d1d9",family="monospace"),
+           legend=list(bgcolor="#161b22",bordercolor="#30363d",borderwidth=1)) %>%
+    config(displayModeBar=FALSE)
+})
+```
+
+### SNR over time
+```{r}
+renderPlotly({
+  d <- dat()$series
+  if (is.null(d)||nrow(d)==0) return(no_data("No series data"))
+  is_agg  <- isTRUE(dat()$is_agg)
+  snr_col <- if("snr_db"%in%names(d)) "snr_db" else if("snr_mean"%in%names(d)) "snr_mean" else return(no_data("No SNR data"))
+  d <- filter_run(d, input$sel_run)
+  if (nrow(d)==0) return(no_data("No data for this run"))
+  thresh <- 5
+  d <- d %>% mutate(slot_n=as.numeric(slot), snr_n=as.numeric(.data[[snr_col]]),
+                    lbl=if(is_agg) paste0(policy," N=",N) else paste0("UAV",drone_id))
+  if (!is_agg) d <- d %>% filter(as.integer(drone_id)<=6)
+  s_range <- range(d$slot_n, na.rm=TRUE)
+  plot_ly(d, x=~slot_n, y=~snr_n, color=~lbl, type="scatter", mode="lines",
+          line=list(width=1),
+          hovertemplate="slot %{x}<br>SNR=%{y:.1f}dB<extra>%{fullData.name}</extra>") %>%
+    add_lines(x=s_range, y=c(thresh,thresh), name="Threshold",
+              line=list(color="#f78166",dash="dash",width=1), inherit=FALSE) %>%
+    layout(title=list(text="SNR over time",font=list(color="#e6edf3",size=12)),
+           xaxis=list(title="Slot",gridcolor="#21262d",color="#8b949e"),
+           yaxis=list(title="SNR (dB)",gridcolor="#21262d",color="#8b949e"),
+           paper_bgcolor="#161b22",plot_bgcolor="#0d1117",
+           font=list(color="#c9d1d9",family="monospace"),
+           legend=list(bgcolor="#161b22",bordercolor="#30363d",borderwidth=1)) %>%
+    config(displayModeBar=FALSE)
+})
+```
+
+
+Risk Analysis {data-icon="fa-shield-alt"}
+=====================================
+
+```{r risk_helpers, include=FALSE}
+has_risk_summary <- reactive({
+  d <- dat()$runs
+  if (is.null(d)||nrow(d)==0||!"mean_r_tot"%in%names(d)) return(FALSE)
+  any(suppressWarnings(as.numeric(d$mean_r_tot)) > 0.001, na.rm=TRUE)
+})
+has_risk_series <- reactive({
+  d <- dat()$series
+  if (is.null(d)||nrow(d)==0) return(FALSE)
+  col <- if("r_tot_mean"%in%names(d)) "r_tot_mean" else if("r_tot"%in%names(d)) "r_tot" else return(FALSE)
+  any(suppressWarnings(as.numeric(d[[col]])) > 0.001, na.rm=TRUE)
+})
+
+# Run selector for risk tab (separate from drone detail)
+output$ui_risk_run <- renderUI({
+  d <- dat()$drones
+  if (is.null(d)||!"run_id"%in%names(d)) return(NULL)
+  runs_avail <- sort(unique(d$run_id))
+  div(style="display:flex;gap:12px;align-items:center;margin-bottom:10px",
+    tags$label("Run:", style="font-size:12px;color:var(--color-text-secondary)"),
+    selectInput("risk_run", NULL,
+      choices = c("(all runs)"="__all__", runs_avail),
+      selected = runs_avail[1], width="380px")
+  )
+})
+
+# Risk-filtered series
+risk_series <- reactive({
+  d <- dat()$series
+  if (is.null(d)||nrow(d)==0) return(NULL)
+  if (!is.null(input$risk_run) && input$risk_run != "__all__" && "run_id"%in%names(d))
+    d <- d %>% filter(run_id == input$risk_run)
+  d
+})
+```
+
+Row {data-height=60}
+-------------------------------------
+
+```{r}
+uiOutput("ui_risk_run")
+```
+
+Row {data-height=420}
+-------------------------------------
+
+### R_sys vs N — all policies {data-width=500}
+
+```{r}
+renderPlotly({
+  d <- runs_r()
+  if (is.null(d)||!"mean_r_tot"%in%names(d)) return(no_data("No risk data"))
+  d <- d %>% mutate(r=suppressWarnings(as.numeric(mean_r_tot))) %>%
+    filter(!is.na(r), r>0)
+  if (nrow(d)==0) return(no_data("mean_r_tot is zero — re-run aggregate_sim_data.R"))
+  pols <- unique(d$policy)
+  plt <- plot_ly()
+  for (pol in pols) {
+    dd <- d %>% filter(policy==pol) %>% arrange(N)
+    plt <- plt %>% add_trace(data=dd, x=~N, y=~r, name=pol,
+      type="scatter", mode="lines+markers",
+      line=list(color=POL_COLORS[pol], width=2),
+      marker=list(color=POL_COLORS[pol], size=8),
+      hovertemplate=paste0("<b>",pol,"</b><br>N=%{x}<br>R_sys=%.3f<extra></extra>"))
+  }
+  plt %>% layout(
+    title=list(text="System-wide risk vs N drones", font=list(color="#e6edf3",size=12)),
+    xaxis=list(title="N drones", gridcolor="#21262d", color="#8b949e", dtick=1),
+    yaxis=list(title="Mean R_sys", gridcolor="#21262d", color="#8b949e"),
+    paper_bgcolor="#161b22", plot_bgcolor="#0d1117",
+    font=list(color="#c9d1d9",family="monospace"),
+    legend=list(bgcolor="#161b22",bordercolor="#30363d",borderwidth=1)) %>%
+    config(displayModeBar=FALSE)
+})
+```
+
+### Risk CDF (selected run) {data-width=500}
+
+```{r}
+renderPlotly({
+  d_cdf <- dat()$cdf
+  if (is.null(d_cdf)||nrow(d_cdf)==0) return(no_data("No CDF data — run aggregate_sim_data.R"))
+
+  # Filter to selected run; if __all__ show one curve per policy (mean)
+  sel <- input$risk_run
+  if (!is.null(sel) && sel != "__all__") {
+    d2 <- d_cdf %>% filter(run_id==sel) %>%
+      mutate(r_num=as.numeric(r_tot), cdf_num=as.numeric(cdf), lbl=run_id)
+  } else {
+    # One curve per policy: average across runs of same policy
+    d2 <- d_cdf %>%
+      mutate(r_num=as.numeric(r_tot), cdf_num=as.numeric(cdf)) %>%
+      group_by(policy, cdf_num=round(as.numeric(cdf),2)) %>%
+      summarise(r_num=mean(r_num,na.rm=TRUE), .groups="drop") %>%
+      mutate(lbl=policy)
+  }
+  if (nrow(d2)==0) return(no_data("No CDF points"))
+
+  pols_in <- if(!is.null(sel)&&sel!="__all__") NULL else unique(d2$policy)
+  plt <- plot_ly()
+  for (g in unique(d2$lbl)) {
+    dd <- d2 %>% filter(lbl==g) %>% arrange(r_num)
+    col <- if(!is.null(pols_in)) POL_COLORS[g] else "#58a6ff"
+    p95 <- quantile(dd$r_num, .95, na.rm=TRUE)
+    plt <- plt %>%
+      add_lines(data=dd, x=~r_num, y=~cdf_num, name=g,
+        line=list(color=col, width=1.8),
+        hovertemplate="R_sys=%{x:.2f}<br>CDF=%{y:.2f}<extra>%{fullData.name}</extra>")
+  }
+  # P95 line for selected run
+  if (!is.null(sel) && sel != "__all__") {
+    p95 <- quantile(d2$r_num, .95, na.rm=TRUE)
+    plt <- plt %>%
+      add_lines(x=c(p95,p95), y=c(0,1), name="P95",
+        line=list(color="#f78166",dash="dash",width=1), inherit=FALSE)
+  }
+  plt %>% layout(
+    title=list(text="Risk CDF", font=list(color="#e6edf3",size=12)),
+    xaxis=list(title="R_sys value", gridcolor="#21262d", color="#8b949e"),
+    yaxis=list(title="CDF", range=c(0,1), gridcolor="#21262d", color="#8b949e"),
+    paper_bgcolor="#161b22", plot_bgcolor="#0d1117",
+    font=list(color="#c9d1d9",family="monospace"),
+    legend=list(bgcolor="#161b22",bordercolor="#30363d",borderwidth=1)) %>%
+    config(displayModeBar=FALSE)
+})
+```
+
+Row {data-height=460}
+-------------------------------------
+
+### Risk components over flight — per drone {data-width=750}
+
+```{r}
+renderPlotly({
+  d <- risk_series()
+  if (is.null(d)||nrow(d)==0) return(no_data("No series data — run aggregate_sim_data.R"))
+  is_agg <- isTRUE(dat()$is_agg)
+
+  # Column aliases
+  rcols <- list(
+    slot  = "slot",
+    r_unc = if("r_unc_mean"%in%names(d)) "r_unc_mean" else if("r_unc"%in%names(d)) "r_unc" else NULL,
+    r_vid = if("r_vid_mean"%in%names(d)) "r_vid_mean" else if("r_vid"%in%names(d)) "r_vid" else NULL,
+    r_tot = if("r_tot_mean"%in%names(d)) "r_tot_mean" else if("r_tot"%in%names(d)) "r_tot" else NULL
+  )
+  if (is.null(rcols$r_tot)) return(no_data("No risk columns in series"))
+
+  d <- d %>% mutate(
+    slot_n  = as.numeric(slot),
+    r_tot_n = as.numeric(.data[[rcols$r_tot]]),
+    r_unc_n = if(!is.null(rcols$r_unc)) as.numeric(.data[[rcols$r_unc]]) else NA_real_,
+    r_vid_n = if(!is.null(rcols$r_vid)) as.numeric(.data[[rcols$r_vid]]) else NA_real_
+  ) %>% filter(!is.na(r_tot_n))
+
+  if (is_agg) {
+    # Agg mode: one subplot per policy × N combination
+    groups <- d %>% distinct(policy, N) %>% arrange(policy, N)
+    n_grps <- nrow(groups)
+    if (n_grps == 0) return(no_data())
+    n_cols <- min(4L, n_grps)
+    n_rows <- ceiling(n_grps / n_cols)
+
+    subplot_list <- lapply(seq_len(n_grps), function(gi) {
+      g   <- groups[gi,]
+      dd  <- d %>% filter(policy==g$policy, N==g$N) %>% arrange(slot_n)
+      col <- POL_COLORS[g$policy]
+      lbl <- paste0(g$policy, " N=", g$N)
+      p <- plot_ly(dd, x=~slot_n) %>%
+        add_lines(y=~r_tot_n, name="R_tot",
+          line=list(color=col, width=1.5), showlegend=(gi==1),
+          hovertemplate="slot %{x}<br>R_sys=%{y:.3f}<extra>R_tot</extra>")
+      if (!all(is.na(dd$r_unc_n)))
+        p <- p %>% add_lines(y=~r_unc_n, name="R_unc",
+          line=list(color="#D85A30",dash="dot",width=1), showlegend=(gi==1),
+          hovertemplate="slot %{x}<br>R_unc=%{y:.3f}<extra>R_unc</extra>")
+      if (!all(is.na(dd$r_vid_n)))
+        p <- p %>% add_lines(y=~r_vid_n, name="R_vid",
+          line=list(color="#7F77DD",dash="dash",width=1), showlegend=(gi==1),
+          hovertemplate="slot %{x}<br>R_vid=%{y:.3f}<extra>R_vid</extra>")
+      p %>% layout(annotations=list(x=0.5, y=1.05, text=lbl, showarrow=FALSE,
+                     xref="paper", yref="paper", font=list(color="#c9d1d9",size=9)))
+    })
+    subplot(subplot_list, nrows=n_rows, shareX=FALSE, shareY=FALSE,
+            titleX=FALSE, titleY=FALSE) %>%
+      layout(paper_bgcolor="#161b22", plot_bgcolor="#0d1117",
+             font=list(color="#c9d1d9",family="monospace"),
+             legend=list(bgcolor="#161b22",bordercolor="#30363d",borderwidth=1)) %>%
+      config(displayModeBar=FALSE)
+  } else {
+    # Raw mode: one subplot per drone
+    drones_avail <- sort(unique(d$drone_id))[1:min(6L,length(unique(d$drone_id)))]
+    n_d <- length(drones_avail)
+    n_cols <- min(3L, n_d); n_rows <- ceiling(n_d/n_cols)
+
+    subplot_list <- lapply(seq_along(drones_avail), function(di) {
+      uid <- drones_avail[di]
+      dd  <- d %>% filter(drone_id==uid) %>% arrange(slot_n)
+      lbl <- paste0("UAV ", uid)
+      p <- plot_ly(dd, x=~slot_n) %>%
+        add_lines(y=~r_tot_n, name="R_tot", showlegend=(di==1),
+          line=list(color="#58a6ff",width=1.5),
+          hovertemplate="slot %{x}<br>R_sys=%{y:.3f}<extra>R_tot</extra>")
+      if (!all(is.na(dd$r_unc_n)))
+        p <- p %>% add_lines(y=~r_unc_n, name="R_unc", showlegend=(di==1),
+          line=list(color="#D85A30",dash="dot",width=1),
+          hovertemplate="slot %{x}<br>R_unc=%{y:.3f}<extra>R_unc</extra>")
+      if (!all(is.na(dd$r_vid_n)))
+        p <- p %>% add_lines(y=~r_vid_n, name="R_vid", showlegend=(di==1),
+          line=list(color="#7F77DD",dash="dash",width=1),
+          hovertemplate="slot %{x}<br>R_vid=%{y:.3f}<extra>R_vid</extra>")
+      p %>% layout(annotations=list(x=0.5, y=1.05, text=lbl, showarrow=FALSE,
+                     xref="paper", yref="paper", font=list(color="#c9d1d9",size=9)))
+    })
+    subplot(subplot_list, nrows=n_rows, shareX=FALSE, shareY=TRUE,
+            titleX=FALSE, titleY=FALSE) %>%
+      layout(paper_bgcolor="#161b22", plot_bgcolor="#0d1117",
+             font=list(color="#c9d1d9",family="monospace"),
+             legend=list(bgcolor="#161b22",bordercolor="#30363d",borderwidth=1)) %>%
+      config(displayModeBar=FALSE)
+  }
+})
+```
+
+### Pilot blindness {data-width=250}
+
+```{r}
+renderPlotly({
+  d <- runs_r()
+  if (is.null(d)||nrow(d)==0) return(no_data())
+  # Pilot blindness: estimate from mean_h1
+  # P(h1 > thresh) ~ 1 - thresh/mean_h1  (linear sawtooth approximation)
+  thresh <- 10  # slots (667ms @ 15Hz)
+  d2 <- d %>%
+    mutate(blind_pct = pmax(0, (1 - thresh/pmax(mean_h1,0.1))) * 100,
+           tip = sprintf("<b>%s</b><br>N=%d<br>Blind~%.1f%%<br>mean h1=%.1f sl",
+                         policy, N, blind_pct, mean_h1))
+  pols <- unique(d2$policy)
+  plt <- plot_ly()
+  for (pol in pols) {
+    dd <- d2 %>% filter(policy==pol) %>% arrange(N)
+    plt <- plt %>% add_trace(data=dd, x=~factor(N), y=~blind_pct, name=pol,
+      type="bar", marker=list(color=POL_COLORS[pol]),
+      text=~tip, hoverinfo="text")
+  }
+  plt %>% layout(
+    barmode="group",
+    title=list(text=paste0("Blind time\n(h1>",thresh,"sl)"), font=list(color="#e6edf3",size=11)),
+    xaxis=list(title="N", gridcolor="#21262d", color="#8b949e"),
+    yaxis=list(title="% slots", gridcolor="#21262d", color="#8b949e"),
+    paper_bgcolor="#161b22", plot_bgcolor="#0d1117",
+    font=list(color="#c9d1d9",family="monospace"),
+    legend=list(bgcolor="#161b22",bordercolor="#30363d",borderwidth=1)) %>%
+    config(displayModeBar=FALSE)
+})
+```
+
+
+Manifest {data-icon="fa-list"}
+=====================================
+
+Row
+-------------------------------------
+
+### Run manifest — all scenario parameters
+```{r}
+renderDT({
+  d <- dat()$manifest
+  if(is.null(d)||nrow(d)==0) return(datatable(data.frame(msg="No manifest CSVs found"),options=list(dom="t")))
+  datatable(d,options=list(pageLength=25,dom="Bfrtip",scrollX=TRUE),
+    style="bootstrap4",class="compact",filter="top") %>%
+    formatStyle(1:ncol(d),backgroundColor="#0d1117",color="#c9d1d9")
+})
+```
