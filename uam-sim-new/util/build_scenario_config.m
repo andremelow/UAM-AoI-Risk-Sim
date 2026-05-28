@@ -45,7 +45,7 @@ cfg.dronesPerSlot   = 1;
 
 cfg.droneEastPos    = 0;   % legacy — overridden by cfg.routes
 cfg.minStartDelay   = 2;
-cfg.maxStartDelay   = 45;
+cfg.maxStartDelay   = 131;   % 3× spacing: (131-2)/(N-1) ≈ 14.3 s/drone
 
 cfg.radioDelay      = 1;
 cfg.coreDelay       = 2;
