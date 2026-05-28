@@ -16,13 +16,13 @@ cfg.csvDir           = 'csv_export';
 % cfg.numDrones is auto-computed as sum([cfg.routes.numDrones]).
 % Per-drone flight time = norm(goal - start) / cfg.speedVal.
 cfg.routes(1).numDrones = 5;
-cfg.routes(1).start     = [0  -3000];   % [North, East]
-cfg.routes(1).goal      = [0   3000];   % [North, East]
+cfg.routes(1).start     = [0  -1500];   % [North, East]
+cfg.routes(1).goal      = [0   1500];   % [North, East]
 cfg.routes(1).label     = 'Route 1';
 
 cfg.routes(2).numDrones = 5;
-cfg.routes(2).start     = [ 500  3000];   % [North, East]
-cfg.routes(2).goal      = [ 200 -3000];   % [North, East]
+cfg.routes(2).start     = [ 250  1500];   % [North, East]
+cfg.routes(2).goal      = [ 100 -1500];   % [North, East]
 cfg.routes(2).label     = 'Route 2';
 
 % Reference speed and corridor length (first route)
