@@ -1,0 +1,1599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UAM Scenario Builder</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--dark:#0f1117;--panel:#1a1c24;--card:#22252f;--border:#2e3140;--accent:#3b82f6;--accent2:#10b981;--red:#ef4444;--amber:#f59e0b;--txt:#e2e8f0;--txt2:#94a3b8;--txt3:#64748b;--purple:#a78bfa;--teal:#2dd4bf}
+html,body{height:100%;font-family:system-ui,sans-serif;background:var(--dark);color:var(--txt);font-size:13px}
+.root{display:flex;flex-direction:column;height:100vh}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--border);flex-shrink:0}
+.topbar-title{font-size:13px;font-weight:500;color:var(--txt)}
+.topbar-sub{font-size:11px;color:var(--txt3);margin-top:1px}
+.topbar-btns{display:flex;gap:6px}
+.body{display:flex;flex:1;overflow:hidden}
+.sidebar{width:310px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden}
+.tabs{display:flex;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.tab{flex:1;padding:7px 3px;font-size:10px;color:var(--txt3);cursor:pointer;text-align:center;background:none;border:none;border-bottom:2px solid transparent;transition:color .15s,border-color .15s;min-width:48px}
+.tab.on{color:var(--txt);border-bottom:2px solid var(--accent)}
+.panel{display:none;flex:1;overflow-y:auto;padding:10px 12px}
+.panel.on{display:block}
+.sec{font-size:10px;font-weight:500;color:var(--txt3);text-transform:uppercase;letter-spacing:.06em;margin:12px 0 6px;display:flex;align-items:center;gap:6px}
+.sec:first-child{margin-top:0}
+.sec-line{flex:1;height:1px;background:var(--border)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.field{margin-bottom:6px}
+.field label{display:block;font-size:10px;color:var(--txt3);margin-bottom:3px}
+.field input,.field select{width:100%;background:var(--card);border:1px solid var(--border);color:var(--txt);border-radius:5px;padding:5px 7px;font-size:12px}
+.field select{cursor:pointer}
+.field input:focus,.field select:focus{outline:none;border-color:var(--accent)}
+.sl-row{display:flex;align-items:center;gap:8px}
+.sl-row input[type=range]{flex:1;accent-color:var(--accent)}
+.sl-val{font-size:12px;font-weight:500;min-width:40px;text-align:right;color:var(--txt)}
+.inf-table{width:100%;border-collapse:collapse;margin-bottom:6px;font-size:11px}
+.inf-table th{color:var(--txt3);font-weight:500;padding:4px 6px;border-bottom:1px solid var(--border);text-align:left}
+.inf-table td{padding:4px 6px;border-bottom:1px solid var(--border);color:var(--txt)}
+.inf-table td input{background:transparent;border:none;color:var(--txt);width:100%;font-size:11px;padding:0}
+.inf-table td input:focus{outline:none;border-bottom:1px solid var(--accent)}
+.inf-table tr:hover td{background:rgba(255,255,255,.03)}
+.btn-row{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}
+.btn{padding:5px 10px;border-radius:5px;font-size:11px;cursor:pointer;border:1px solid var(--border);background:var(--card);color:var(--txt);transition:background .12s}
+.btn:hover{background:#2e3347}
+.btn-pri{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:500}
+.btn-pri:hover{background:#2563eb}
+.btn-suc{background:var(--accent2);border-color:var(--accent2);color:#fff;font-weight:500}
+.btn-suc:hover{background:#059669}
+.btn-dan{background:var(--red);border-color:var(--red);color:#fff}
+.btn-warn{background:var(--amber);border-color:var(--amber);color:#1a1a1a;font-weight:500}
+.btn-warn:hover{background:#d97706}
+.btn-teal{background:#0d3630;border-color:var(--teal);color:var(--teal);font-weight:500}
+.btn-teal:hover{background:rgba(45,212,191,.12)}
+#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%) translateY(8px);
+  background:#1a2e4a;color:#93c5fd;padding:6px 16px;border-radius:6px;font-size:11px;
+  opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;z-index:9999;
+  border:1px solid #2563eb;white-space:nowrap}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.canvas-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.toolbar{display:flex;align-items:center;gap:6px;padding:6px 10px;background:var(--panel);border-bottom:1px solid var(--border);flex-shrink:0}
+.tool-btn{padding:4px 10px;border-radius:5px;font-size:11px;cursor:pointer;border:1px solid var(--border);background:var(--card);color:var(--txt3);transition:all .12s}
+.tool-btn.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.mode-txt{font-size:11px;color:var(--txt3);margin-left:4px}
+canvas#map{flex:1;display:block;cursor:crosshair;background:#111827}
+.code-area{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px;font-family:monospace;font-size:10px;color:#a5f3c0;white-space:pre;overflow:auto;max-height:260px;line-height:1.6;margin-bottom:8px}
+.summary{background:var(--card);border-radius:6px;padding:8px 10px;font-size:11px;color:var(--txt2);line-height:1.8;margin-top:6px}
+.hs-item{display:flex;align-items:center;justify-content:space-between;padding:4px 6px;background:var(--card);border-radius:4px;margin-bottom:4px;font-size:11px;color:var(--txt2)}
+.badge{display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:500}
+.badge-blue{background:#1e3a5f;color:#93c5fd}
+.badge-green{background:#14402e;color:#6ee7b7}
+.badge-purple{background:#2e1e5f;color:#c4b5fd}
+.badge-teal{background:#0d3630;color:#5eead4}
+
+/* Arrival model conditional panels */
+.arr-params{display:none;margin-top:8px;padding:8px;background:rgba(0,0,0,.2);border:1px solid var(--border);border-radius:6px}
+.arr-params.visible{display:block}
+.arr-model-label{font-size:10px;color:var(--txt3);margin-bottom:4px;font-weight:500;text-transform:uppercase;letter-spacing:.04em}
+
+/* Policy pill */
+.policy-pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:#1e3a5f;color:#93c5fd;margin-left:4px;vertical-align:middle}
+
+/* Collapsible alpha row */
+.alpha-row{margin-top:6px;padding-top:6px;border-top:1px solid var(--border);display:none}
+.alpha-row.visible{display:block}
+
+/* Info hint */
+.hint{font-size:10px;color:var(--txt3);line-height:1.5;padding:5px 7px;background:rgba(59,130,246,.06);border-left:2px solid var(--accent);border-radius:0 4px 4px 0;margin-top:4px}
+
+/* Map controls */
+.map-sep{width:1px;height:18px;background:var(--border);margin:0 2px;flex-shrink:0}
+.map-select{background:var(--card);border:1px solid var(--border);color:var(--txt);border-radius:5px;padding:3px 6px;font-size:11px;cursor:pointer}
+.map-select:focus{outline:none;border-color:var(--accent)}
+.map-opacity-wrap{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--txt3)}
+.map-opacity-wrap input[type=range]{width:60px;accent-color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="root">
+<div class="topbar">
+  <div>
+    <div class="topbar-title">UAM Scenario Builder</div>
+    <div class="topbar-sub">configure fleet · arrival model · scheduling · gNBs · risk — export CSV or MATLAB &nbsp;|&nbsp; origin: Interlagos (−23.7036°, −46.6997°)</div>
+  </div>
+  <div class="topbar-btns">
+    <button class="btn btn-warn" onclick="exportCSV()">Export CSV</button>
+    <button class="btn btn-pri" onclick="exportMatlab()">Export MATLAB</button>
+    <button class="btn btn-suc" onclick="importCSV()">Import CSV</button>
+    <input type="file" id="csvFile" accept=".csv" style="display:none" onchange="loadCSV(event)">
+    <button class="btn btn-teal" onclick="importMatlabFile()">Import .m</button>
+    <input type="file" id="mFile" accept=".m" style="display:none" onchange="loadMatlabConfig(event)">
+  </div>
+</div>
+
+<div class="body">
+<div class="sidebar">
+  <div class="tabs">
+    <button class="tab on" onclick="switchTab('general',this)">General</button>
+    <button class="tab" onclick="switchTab('routes',this)">Routes</button>
+    <button class="tab" onclick="switchTab('arrival',this)">Arrival</button>
+    <button class="tab" onclick="switchTab('sched',this)">Sched</button>
+    <button class="tab" onclick="switchTab('infra',this)">gNBs</button>
+    <button class="tab" onclick="switchTab('risk',this)">Risk</button>
+    <button class="tab" onclick="switchTab('routing',this)">Routing</button>
+    <button class="tab" onclick="switchTab('output',this)">Output</button>
+  </div>
+
+  <!-- ══════════ GENERAL ══════════ -->
+  <div id="panel-general" class="panel on">
+    <div class="sec">Corridor &amp; fleet <span class="sec-line"></span></div>
+    <div class="row2">
+      <div class="field"><label>Drones</label><input type="number" id="numDrones" value="5" min="1" max="100"></div>
+      <div class="field"><label>Corridor (m)</label><input type="number" id="corridorLength" value="3000"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>Flight time (s)</label><input type="number" id="flightTime" value="60"></div>
+      <div class="field"><label>Update rate (Hz)</label><input type="number" id="updateRate" value="7"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>Drones/slot</label><input type="number" id="dronesPerSlot" value="1"></div>
+      <div class="field"><label>East offset (m)</label><input type="number" id="droneEast" value="0"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>Delay min (s)</label><input type="number" id="delayMin" value="2"></div>
+      <div class="field"><label>Delay max (s)</label><input type="number" id="delayMax" value="45"></div>
+    </div>
+    <div class="sec">Radio <span class="sec-line"></span></div>
+    <div class="row2">
+      <div class="field"><label>Freq (GHz)</label><input type="number" id="fc" value="3.5" step="0.1"></div>
+      <div class="field"><label>BW (MHz)</label><input type="number" id="bw" value="20"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>Tx power (dBm)</label><input type="number" id="txPower" value="23"></div>
+      <div class="field"><label>gNB gain (dBi)</label><input type="number" id="gNBGain" value="15"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>Noise fig (dB)</label><input type="number" id="noiseFig" value="7"></div>
+      <div class="field"><label>SNR thresh (dB)</label><input type="number" id="snrThresh" value="5"></div>
+    </div>
+    <div class="sec">Latency (ms) <span class="sec-line"></span></div>
+    <div class="row2">
+      <div class="field"><label>Radio</label><input type="number" id="latRadio" value="1"></div>
+      <div class="field"><label>Core</label><input type="number" id="latCore" value="2"></div>
+    </div>
+    <div class="field"><label>Video</label><input type="number" id="latVideo" value="10"></div>
+  </div>
+
+  <!-- ══════════ ROUTES ══════════ -->
+  <div id="panel-routes" class="panel">
+    <div class="sec">Fleet routes <span class="sec-line"></span></div>
+    <div class="hint">Each route is a drone group with its own entry and exit points. <strong>cfg.numDrones</strong> is auto-computed as the sum of all route counts.</div>
+    <div class="btn-row" style="margin-top:8px">
+      <button class="btn btn-pri" onclick="addRoute()">+ Add route</button>
+      <span style="font-size:11px;color:var(--txt2);margin-left:6px;line-height:26px">Total: <strong id="routeTotal">5</strong> drones</span>
+    </div>
+    <div style="overflow-x:auto">
+    <table class="inf-table" style="font-size:10px;min-width:420px">
+      <thead>
+        <tr>
+          <th style="width:14px">#</th>
+          <th>Label</th>
+          <th style="width:46px">Drones</th>
+          <th>Start&nbsp;N</th><th>Start&nbsp;E</th>
+          <th>Goal&nbsp;N</th><th>Goal&nbsp;E</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="routeTbody"></tbody>
+    </table>
+    </div>
+    <div class="hint" style="margin-top:6px">Coordinates in metres (NED). Routes appear as coloured arrows on the map.</div>
+  </div>
+
+  <!-- ══════════ ARRIVAL MODEL ══════════ -->
+  <div id="panel-arrival" class="panel">
+    <div class="sec">Arrival model <span class="sec-line"></span></div>
+    <div class="field">
+      <label>Model type</label>
+      <select id="arrModel" onchange="onArrModelChange()">
+        <option value="uniform" selected>uniform — random uniform window</option>
+        <option value="nhpp">nhpp — Non-homogeneous Poisson (bell curve)</option>
+        <option value="rush_hour">rush_hour — dual-peak profile</option>
+        <option value="batch">batch — grouped arrivals</option>
+        <option value="deterministic">deterministic — evenly spaced</option>
+      </select>
+    </div>
+
+    <!-- NHPP params -->
+    <div id="arr-nhpp" class="arr-params">
+      <div class="arr-model-label">NHPP parameters</div>
+      <div class="hint">Bell-curve λ(t): most drones arrive near the middle of the horizon window.</div>
+      <div class="row2" style="margin-top:8px">
+        <div class="field"><label>Horizon multiplier</label><input type="number" id="nhppHorizonMult" value="2.5" step="0.1" min="1"></div>
+        <div class="field"><label>λ_max (auto=blank)</label><input type="number" id="nhppLambdaMax" placeholder="auto"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Peak center (×horizon)</label><input type="number" id="nhppPeakCenter" value="0.45" step="0.01" min="0" max="1"></div>
+        <div class="field"><label>Peak width (×horizon)</label><input type="number" id="nhppPeakWidth" value="0.15" step="0.01" min="0.01"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Base rate weight</label><input type="number" id="nhppBaseRate" value="0.3" step="0.05" min="0"></div>
+        <div class="field"><label>Peak rate weight</label><input type="number" id="nhppPeakRate" value="1.4" step="0.05" min="0"></div>
+      </div>
+    </div>
+
+    <!-- RUSH HOUR params -->
+    <div id="arr-rush_hour" class="arr-params">
+      <div class="arr-model-label">Rush-hour parameters</div>
+      <div class="hint">Two Gaussian peaks at configurable positions within the horizon window.</div>
+      <div class="row2" style="margin-top:8px">
+        <div class="field"><label>Horizon multiplier</label><input type="number" id="rhHorizonMult" value="2.5" step="0.1" min="1"></div>
+        <div class="field"><label>Peak width (×horizon)</label><input type="number" id="rhPeakWidth" value="0.09" step="0.01" min="0.01"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Peak 1 pos (×horizon)</label><input type="number" id="rhPeak1" value="0.20" step="0.01" min="0" max="1"></div>
+        <div class="field"><label>Peak 2 pos (×horizon)</label><input type="number" id="rhPeak2" value="0.72" step="0.01" min="0" max="1"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Base rate</label><input type="number" id="rhBaseRate" value="0.04" step="0.01" min="0"></div>
+        <div class="field"><label>Peak rate</label><input type="number" id="rhPeakRate" value="0.55" step="0.01" min="0"></div>
+      </div>
+    </div>
+
+    <!-- BATCH params -->
+    <div id="arr-batch" class="arr-params">
+      <div class="arr-model-label">Batch parameters</div>
+      <div class="hint">Drones arrive in random-sized groups at a Poisson rate.</div>
+      <div class="row2" style="margin-top:8px">
+        <div class="field"><label>Horizon multiplier</label><input type="number" id="batchHorizonMult" value="2.5" step="0.1" min="1"></div>
+        <div class="field"><label>Group rate λ (grp/s)</label><input type="number" id="batchLambda" value="0.25" step="0.05" min="0.01"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Min per group</label><input type="number" id="batchSizeMin" value="2" min="1"></div>
+        <div class="field"><label>Max per group</label><input type="number" id="batchSizeMax" value="4" min="1"></div>
+      </div>
+      <div class="field"><label>Within-group jitter (s)</label><input type="number" id="batchJitter" value="2.0" step="0.1" min="0"></div>
+    </div>
+
+    <!-- DETERMINISTIC params -->
+    <div id="arr-deterministic" class="arr-params">
+      <div class="arr-model-label">Deterministic parameters</div>
+      <div class="hint">Drones depart at equal intervals between delay_min and delay_max. Spacing = (max−min)/(N−1).</div>
+      <div class="field" style="margin-top:8px"><label>Spacing (s) — computed</label>
+        <input type="text" id="detSpacingDisplay" readonly style="color:var(--teal);cursor:default">
+      </div>
+    </div>
+
+    <!-- UNIFORM info -->
+    <div id="arr-uniform" class="arr-params visible">
+      <div class="arr-model-label">Uniform parameters</div>
+      <div class="hint">Start times drawn uniformly from [delay_min, delay_max] (set in General tab). No extra parameters required.</div>
+    </div>
+  </div>
+
+  <!-- ══════════ SCHEDULING ══════════ -->
+  <div id="panel-sched" class="panel">
+    <div class="sec">Scheduling policy <span class="sec-line"></span></div>
+    <div class="field">
+      <label>Policy <span class="badge badge-purple" id="schedBadge">pf-classic</span></label>
+      <select id="schedPolicy" onchange="onSchedChange()">
+        <option value="round-robin">round-robin — equal time-slot rotation</option>
+        <option value="pf-classic" selected>pf-classic — proportional fair</option>
+        <option value="pf-aoi">pf-aoi — PF weighted by Age-of-Information</option>
+        <option value="risk-aware">risk-aware — risk-weighted allocation</option>
+        <option value="hybrid">hybrid — α·PF-AoI + (1−α)·Risk-Aware</option>
+      </select>
+    </div>
+    <div class="hint" id="schedHint">Standard proportional-fair scheduler: maximises throughput while maintaining fairness across drones.</div>
+
+    <div class="alpha-row" id="alphaRow">
+      <div class="sec" style="margin-top:0">Hybrid weight <span class="sec-line"></span></div>
+      <div class="field"><label>α — PF-AoI weight (1−α = Risk-Aware weight)</label>
+        <div class="sl-row">
+          <input type="range" id="schedAlpha" min="0" max="1" step="0.05" value="0.7"
+            oninput="document.getElementById('schedAlphaV').textContent=parseFloat(this.value).toFixed(2)">
+          <span class="sl-val" id="schedAlphaV">0.70</span>
+        </div>
+      </div>
+      <div class="hint" style="margin-top:0">α=1 → pure PF-AoI &nbsp;|&nbsp; α=0 → pure Risk-Aware</div>
+    </div>
+
+    <div class="sec" style="margin-top:14px">AoI &amp; timing <span class="sec-line"></span></div>
+    <div class="row2">
+      <div class="field"><label>r_min (m)</label><input type="number" id="rMin" value="10"></div>
+      <div class="field"><label>k_aoi</label><input type="number" id="kAoi" value="0.5" step="0.1"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>tau_max (ms)</label><input type="number" id="tauMax" value="500"></div>
+      <div class="field"><label>d_crit (m)</label><input type="number" id="dCrit" value="200"></div>
+    </div>
+    <div class="field"><label>R̄_sys threshold</label><input type="number" id="rBarSys" value="500"></div>
+  </div>
+
+  <!-- ══════════ gNBs ══════════ -->
+  <div id="panel-infra" class="panel">
+    <div class="sec">Base stations (gNBs) <span class="badge badge-blue" id="bsCount">3</span> <span class="sec-line"></span></div>
+    <table class="inf-table" id="bsTable">
+      <thead><tr><th>#</th><th>x (m)</th><th>y (m)</th><th>z (m)</th><th></th></tr></thead>
+      <tbody id="bsTbody"></tbody>
+    </table>
+    <div class="btn-row">
+      <button class="btn" onclick="addBS(0,0,-30)">+ Add row</button>
+      <button class="btn" onclick="clearBS()">Clear all</button>
+    </div>
+    <div class="sec">Master control <span class="sec-line"></span></div>
+    <div class="row2">
+      <div class="field"><label>x (m)</label><input type="number" id="masterN" value="0"></div>
+      <div class="field"><label>y (m)</label><input type="number" id="masterE" value="0"></div>
+    </div>
+    <div class="field"><label>z (m)</label><input type="number" id="masterD" value="-60"></div>
+    <div class="hint" style="margin-top:8px">Switch to gNB tool and click the map to place stations visually.</div>
+  </div>
+
+  <!-- ══════════ RISK ══════════ -->
+  <div id="panel-risk" class="panel">
+    <div class="sec">Risk weights <span class="sec-line"></span></div>
+    <div class="hint" style="margin-bottom:8px">Weights are scale coefficients — not probabilities. Only negative values are invalid.</div>
+    <div class="field"><label>w_unc (uncertainty)</label>
+      <div class="sl-row"><input type="range" id="wUnc" min="0" max="5" step="0.05" value="1.0" oninput="document.getElementById('wUncV').textContent=parseFloat(this.value).toFixed(2)"><span class="sl-val" id="wUncV">1.00</span></div>
+    </div>
+    <div class="field"><label>w_map (map exposure)</label>
+      <div class="sl-row"><input type="range" id="wMap" min="0" max="0.01" step="0.0001" value="0.0001" oninput="document.getElementById('wMapV').textContent=parseFloat(this.value).toExponential(1)"><span class="sl-val" id="wMapV">1e-4</span></div>
+    </div>
+    <div class="field"><label>w_vid (video quality)</label>
+      <div class="sl-row"><input type="range" id="wVid" min="0" max="50" step="0.5" value="10.0" oninput="document.getElementById('wVidV').textContent=parseFloat(this.value).toFixed(1)"><span class="sl-val" id="wVidV">10.0</span></div>
+    </div>
+    <div class="sec">Heatmap hotspots <span class="sec-line"></span></div>
+    <div class="row2">
+      <div class="field"><label>Num random</label><input type="number" id="numRandHS" value="6" min="0" max="40"></div>
+      <div class="field"><label>Seed</label><input type="number" id="randSeed" value="42"></div>
+    </div>
+    <button class="btn btn-pri" style="width:100%;margin-bottom:8px" onclick="regenRandHS();renderMap()">Regenerate random hotspots</button>
+    <div class="sec">Manual hotspots <span class="badge badge-green" id="hsCount">0</span> <span class="sec-line"></span></div>
+    <div id="hsList"></div>
+    <div class="row2" style="margin-top:6px">
+      <div class="field"><label>Amplitude</label>
+        <div class="sl-row"><input type="range" id="hsAmp" min="0.1" max="1" step="0.05" value="0.75" oninput="document.getElementById('hsAmpV').textContent=parseFloat(this.value).toFixed(2)"><span class="sl-val" id="hsAmpV">0.75</span></div>
+      </div>
+      <div class="field"><label>Sigma (m)</label>
+        <div class="sl-row"><input type="range" id="hsSig" min="40" max="300" step="10" value="120" oninput="document.getElementById('hsSigV').textContent=this.value"><span class="sl-val" id="hsSigV">120</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ ROUTING ══════════ -->
+  <div id="panel-routing" class="panel">
+    <div class="sec">Path planning mode <span class="sec-line"></span></div>
+    <div class="field">
+      <label>Mode</label>
+      <select id="routingMode" onchange="onRoutingModeChange()">
+        <option value="static" selected>static — straight corridor (default)</option>
+        <option value="risk_astar">risk_astar — Risk-A* pre-flight planning</option>
+      </select>
+    </div>
+    <div class="hint" id="routingHint">Drones fly a fixed straight corridor. Scheduling policies see spatially uniform ground risk along the path.</div>
+
+    <div id="routing-astar-params" class="arr-params">
+      <div class="arr-model-label">Risk-A* parameters</div>
+      <div class="hint">A* grid search minimises w_d·dist + w_r·K_c per arc. K_c = λ·A·P·F_c (Hu et al., IEEE Access 2020).</div>
+
+      <div class="sec" style="margin-top:10px">Weights <span class="sec-line"></span></div>
+      <div class="field"><label>w_d — distance weight</label>
+        <div class="sl-row">
+          <input type="range" id="routingWd" min="0" max="1" step="0.05" value="0.5"
+            oninput="onWdChange(this.value)">
+          <span class="sl-val" id="routingWdV">0.50</span>
+        </div>
+      </div>
+      <div class="field"><label>w_r — risk weight (= 1 − w_d)</label>
+        <div class="sl-row">
+          <input type="range" id="routingWr" min="0" max="1" step="0.05" value="0.5"
+            oninput="onWrChange(this.value)">
+          <span class="sl-val" id="routingWrV">0.50</span>
+        </div>
+      </div>
+
+      <div class="sec">UAV physical model <span class="sec-line"></span></div>
+      <div class="row2">
+        <div class="field"><label>λ — fall prob.</label><input type="number" id="routingLambda" value="0.0001" step="0.00001"></div>
+        <div class="field"><label>Mass (kg)</label><input type="number" id="routingMass" value="1.5" step="0.1"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Fall speed (m/s)</label><input type="number" id="routingFallSpeed" value="20"></div>
+        <div class="field"><label>Sheltering Sh_c</label><input type="number" id="routingSheltering" value="0.5" min="0" max="1" step="0.05"></div>
+      </div>
+
+      <div class="sec">Fatality model <span class="sec-line"></span></div>
+      <div class="row2">
+        <div class="field"><label>I (J) — 50% fatality</label><input type="number" id="routingI" value="100"></div>
+        <div class="field"><label>I₀ (J) — 0% fatality</label><input type="number" id="routingI0" value="34"></div>
+      </div>
+      <div class="hint">P_fatal = clip((E−I₀)/(I−I₀), 0, 1)  where E = ½mv²</div>
+    </div>
+  </div>
+
+  <!-- ══════════ OUTPUT ══════════ -->
+  <div id="panel-output" class="panel">
+    <div class="sec">Config preview <span class="sec-line"></span></div>
+    <div class="code-area" id="codePreview">click "Export CSV" or "Export MATLAB" above</div>
+    <div class="btn-row">
+      <button class="btn btn-warn" onclick="exportCSV()">Export CSV</button>
+      <button class="btn btn-pri" onclick="exportMatlab()">Export MATLAB</button>
+      <button class="btn" onclick="previewConfig()">Preview</button>
+    </div>
+    <div class="summary" id="summaryBox">—</div>
+  </div>
+</div>
+
+<!-- ══════════ MAP ══════════ -->
+<div class="canvas-wrap">
+  <div class="toolbar">
+    <button class="tool-btn on" id="tool-pan" onclick="setTool('pan')">Pan</button>
+    <button class="tool-btn" id="tool-bs" onclick="setTool('bs')">Place gNB</button>
+    <button class="tool-btn" id="tool-hs" onclick="setTool('hs')">Place hotspot</button>
+    <button class="tool-btn" id="tool-del" onclick="setTool('del')">Delete</button>
+    <div class="map-sep"></div>
+    <select id="mapStyle" class="map-select" onchange="setMapStyle(this.value)">
+      <option value="none">No map</option>
+      <option value="dark" selected>Dark (CartoDB)</option>
+      <option value="light">Light (CartoDB)</option>
+      <option value="osm">OpenStreetMap</option>
+    </select>
+    <div class="map-opacity-wrap">
+      <span>opacity</span>
+      <input type="range" id="mapOpacity" min="0.1" max="1" step="0.05" value="0.85" oninput="renderMap()">
+    </div>
+    <span class="mode-txt" id="modeTxt">pan mode</span>
+  </div>
+  <canvas id="map"></canvas>
+</div>
+</div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// COORDINATE CONVENTION  (matches MATLAB plot: East=X horiz, North=Y vert)
+//
+//  Canvas X (horizontal) = East   → bs[1], h[1]
+//  Canvas Y (vertical)   = North  → bs[0], h[0]  (North+ downward = imagesc)
+//
+//  All internal arrays mirror MATLAB order  [North, East, Down]:
+//    S.bs / S.master  = [North, East, Down]
+//    S.randHS / S.manualHS = [North, East, amp, sigma]
+//
+//  w2c(north, east) → canvas pixel {x, y}
+//      x = W2/2 + (east  − cx) * sc
+//      y = H/2  + (north − cy) * sc   ← North+ goes DOWN
+//  c2w(cx, cy) → {north, east}
+// ═══════════════════════════════════════════════════════════════════
+
+const S={
+  tool:'pan',
+  bs:[[-800,0,-30],[0,0,-30],[800,0,-30]], // microBSPos: [N,E,D]
+  master:[0,0,-60],
+  randHS:[], manualHS:[],
+  routes:[{label:'Route 1',numDrones:5,startN:0,startE:-1500,goalN:0,goalE:1500,color:'#3b82f6'}],
+  view:{cx:0,cy:0,scale:1},
+  drag:false, lastMouse:null
+};
+
+// World bounds — East is horizontal (X), North is vertical (Y)
+// emin/emax = East range (horizontal), nmin/nmax = North range (vertical)
+const W={emin:-1500,emax:1500, nmin:-800,nmax:800};
+
+function gv(id){return document.getElementById(id)?.value}
+function gn(id){return parseFloat(document.getElementById(id)?.value)||0}
+
+// ── Coordinate transforms ──────────────────────────────────────────
+function w2c(north, east){
+  const W2=canvas.width, H=canvas.height;
+  const scE=W2/(W.emax-W.emin), scN=H/(W.nmax-W.nmin);
+  const sc=Math.min(scE,scN)*S.view.scale;
+  return{ x: W2/2 + (east  - S.view.cx)*sc,
+          y: H/2  + (north - S.view.cy)*sc,
+          sc };
+}
+function c2w(cx,cy){
+  const W2=canvas.width, H=canvas.height;
+  const scE=W2/(W.emax-W.emin), scN=H/(W.nmax-W.nmin);
+  const sc=Math.min(scE,scN)*S.view.scale;
+  return{ east:  (cx - W2/2)/sc + S.view.cx,
+          north: (cy - H/2 )/sc + S.view.cy };
+}
+
+// ── Tab switching ────────────────────────────────────────────────
+function switchTab(id,el){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.getElementById('panel-'+id).classList.add('on');
+  el.classList.add('on');
+  if(id==='output') previewConfig();
+  if(id==='arrival') updateDetSpacing();
+}
+
+// ── Tool mode ────────────────────────────────────────────────────
+function setTool(t){
+  S.tool=t;
+  document.querySelectorAll('.tool-btn').forEach(b=>b.classList.remove('on'));
+  document.getElementById('tool-'+t).classList.add('on');
+  const labels={pan:'pan mode',bs:'click map to place gNB',
+                hs:'click map to place hotspot',del:'click marker to delete'};
+  document.getElementById('modeTxt').textContent=labels[t]||t;
+  canvas.style.cursor=t==='pan'?'grab':t==='del'?'crosshair':'cell';
+}
+
+// ── Arrival model UI ─────────────────────────────────────────────
+function onArrModelChange(){
+  const v=gv('arrModel');
+  ['nhpp','rush_hour','batch','deterministic','uniform'].forEach(m=>{
+    const el=document.getElementById('arr-'+m);
+    if(el) el.classList.toggle('visible', m===v);
+  });
+  if(v==='deterministic') updateDetSpacing();
+}
+function updateDetSpacing(){
+  const min=gn('delayMin'),max=gn('delayMax'),n=gn('numDrones');
+  const sp=n>1?((max-min)/(n-1)).toFixed(3):'—';
+  const el=document.getElementById('detSpacingDisplay');
+  if(el) el.value=sp+' s';
+}
+['delayMin','delayMax','numDrones'].forEach(id=>{
+  const el=document.getElementById(id);
+  if(el) el.addEventListener('input',updateDetSpacing);
+});
+
+// ── Scheduling policy UI ─────────────────────────────────────────
+const SCHED_HINTS={
+  'round-robin': 'Equal time-slot rotation — simple, no channel awareness.',
+  'pf-classic':  'Proportional-fair: maximises throughput while maintaining fairness.',
+  'pf-aoi':      'PF weighted by Age-of-Information: prioritises stale telemetry drones.',
+  'risk-aware':  'Allocates slots based on risk score (w_unc·unc + w_map·map + w_vid·vid).',
+  'hybrid':      'Convex combination α·PF-AoI + (1−α)·Risk-Aware. Tune α below.'
+};
+function onSchedChange(){
+  const v=gv('schedPolicy');
+  document.getElementById('schedBadge').textContent=v;
+  document.getElementById('schedHint').textContent=SCHED_HINTS[v]||'';
+  document.getElementById('alphaRow').classList.toggle('visible',v==='hybrid');
+}
+
+// ── Routing mode UI ─────────────────────────────────────────────
+const ROUTING_HINTS={
+  'static':     'Drones fly a fixed straight corridor. Scheduling policies see spatially uniform ground risk along the path.',
+  'risk_astar': 'Risk-A* pre-computes minimum-cost trajectories (w_d·dist + w_r·K_c) before the simulation. Decoupled from scheduling policies.'
+};
+function onRoutingModeChange(){
+  const v=gv('routingMode');
+  document.getElementById('routingHint').textContent=ROUTING_HINTS[v]||'';
+  document.getElementById('routing-astar-params').classList.toggle('visible', v==='risk_astar');
+}
+function onWdChange(val){
+  const wd=parseFloat(val), wr=parseFloat((1-wd).toFixed(2));
+  document.getElementById('routingWdV').textContent=wd.toFixed(2);
+  document.getElementById('routingWr').value=wr;
+  document.getElementById('routingWrV').textContent=wr.toFixed(2);
+}
+function onWrChange(val){
+  const wr=parseFloat(val), wd=parseFloat((1-wr).toFixed(2));
+  document.getElementById('routingWrV').textContent=wr.toFixed(2);
+  document.getElementById('routingWd').value=wd;
+  document.getElementById('routingWdV').textContent=wd.toFixed(2);
+}
+
+// ── Canvas setup ─────────────────────────────────────────────────
+const canvas=document.getElementById('map');
+const ctx=canvas.getContext('2d');
+
+// ── Offscreen canvas for heatmap (avoids putImageData erasing tile layer) ──
+const heatCanvas=document.createElement('canvas');
+const heatCtx=heatCanvas.getContext('2d');
+
+// ── Map tile layer ────────────────────────────────────────────────
+// Interlagos Autódromo José Carlos Pace — origin of local NED coordinate system
+const ORIGIN={lat:-23.7036, lon:-46.6997};
+const TILE_URLS={
+  dark:  'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+  light: 'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+  osm:   'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
+};
+let mapStyle='dark';
+const tileCache=new Map();
+let tileRenderPending=false;
+
+function setMapStyle(v){mapStyle=v;renderMap();}
+
+function scheduleMapRender(){
+  if(tileRenderPending) return;
+  tileRenderPending=true;
+  requestAnimationFrame(()=>{tileRenderPending=false;renderMap();});
+}
+
+// sim (north, east) [metres] ↔ geographic (lat, lon) [degrees]
+// Convention: sim North+ = canvas-down = geographic South (MATLAB imagesc orientation)
+function simToGeo(north, east){
+  const R=111319.9, cosLat=Math.cos(ORIGIN.lat*Math.PI/180);
+  return{lat: ORIGIN.lat - north/R, lon: ORIGIN.lon + east/(R*cosLat)};
+}
+function geoToSim(lat, lon){
+  const R=111319.9, cosLat=Math.cos(ORIGIN.lat*Math.PI/180);
+  return{north:(ORIGIN.lat-lat)*R, east:(lon-ORIGIN.lon)*R*cosLat};
+}
+
+// Web Mercator tile ↔ geographic
+function tileToGeo(tx, ty, z){
+  const n=Math.pow(2,z);
+  return{
+    lat: Math.atan(Math.sinh(Math.PI*(1-2*ty/n)))*180/Math.PI,
+    lon: tx/n*360-180
+  };
+}
+function geoToTileFrac(lat, lon, z){
+  const n=Math.pow(2,z);
+  return{
+    x:(lon+180)/360*n,
+    y:(1-Math.log(Math.tan(lat*Math.PI/180)+1/Math.cos(lat*Math.PI/180))/Math.PI)/2*n
+  };
+}
+
+function drawMapTiles(){
+  if(mapStyle==='none') return;
+  const urlTpl=TILE_URLS[mapStyle]; if(!urlTpl) return;
+  const W2=canvas.width, H=canvas.height; if(!W2||!H) return;
+
+  // Zoom level from current pixel scale
+  const scE=W2/(W.emax-W.emin), scN=H/(W.nmax-W.nmin);
+  const sc=Math.min(scE,scN)*S.view.scale;
+  const mpp=1/sc; // metres per pixel
+  const cosLat=Math.cos(ORIGIN.lat*Math.PI/180);
+  const zRaw=Math.round(Math.log2(156543.03*cosLat/mpp));
+  const tileZ=Math.min(19,Math.max(10,zRaw));
+
+  // Visible tile range from the 4 canvas corners
+  const corners=[c2w(0,0),c2w(W2,0),c2w(0,H),c2w(W2,H)];
+  let txMin=Infinity,txMax=-Infinity,tyMin=Infinity,tyMax=-Infinity;
+  corners.forEach(({north,east})=>{
+    const geo=simToGeo(north,east);
+    const tf=geoToTileFrac(geo.lat,geo.lon,tileZ);
+    txMin=Math.min(txMin,Math.floor(tf.x));
+    txMax=Math.max(txMax,Math.floor(tf.x)+1);
+    tyMin=Math.min(tyMin,Math.floor(tf.y));
+    tyMax=Math.max(tyMax,Math.floor(tf.y)+1);
+  });
+
+  const opacity=parseFloat(document.getElementById('mapOpacity').value);
+  ctx.save(); ctx.globalAlpha=opacity;
+
+  for(let tx=txMin-1;tx<=txMax+1;tx++){
+    for(let ty=tyMin-1;ty<=tyMax+1;ty++){
+      // Top-left and bottom-right geographic corners of this tile
+      const geo_tl=tileToGeo(tx,ty,tileZ);
+      const sim_tl=geoToSim(geo_tl.lat,geo_tl.lon);
+      const p_tl=w2c(sim_tl.north,sim_tl.east);
+      const geo_br=tileToGeo(tx+1,ty+1,tileZ);
+      const sim_br=geoToSim(geo_br.lat,geo_br.lon);
+      const p_br=w2c(sim_br.north,sim_br.east);
+      const tW=p_br.x-p_tl.x, tH=p_br.y-p_tl.y;
+      if(tW<=0||tH<=0) continue;
+
+      const key=`${tileZ}/${tx}/${ty}`;
+      if(!tileCache.has(key)){
+        tileCache.set(key,'loading');
+        const img=new Image();
+        img.crossOrigin='anonymous';
+        img.onload=()=>{tileCache.set(key,img);scheduleMapRender();};
+        img.onerror=()=>{tileCache.set(key,'error');};
+        img.src=urlTpl.replace('{z}',tileZ).replace('{x}',((tx%Math.pow(2,tileZ))+Math.pow(2,tileZ))%Math.pow(2,tileZ)).replace('{y}',ty);
+      }
+      const tile=tileCache.get(key);
+      if(tile instanceof HTMLImageElement) ctx.drawImage(tile,p_tl.x,p_tl.y,tW,tH);
+    }
+  }
+  ctx.restore();
+
+  // Attribution (required by OSM/CartoDB usage terms)
+  ctx.fillStyle='rgba(255,255,255,0.55)'; ctx.font='9px sans-serif'; ctx.textAlign='right';
+  ctx.fillText('© OpenStreetMap contributors | © CARTO',W2-4,H-4);
+}
+
+function seededRng(seed){
+  let s=seed%2147483647; if(s<=0)s+=2147483646;
+  return()=>{s=s*16807%2147483647;return(s-1)/2147483646};
+}
+
+// ── Hotspot generation ───────────────────────────────────────────
+// Stores [North, East, amp, sigma] — North ∈ xmin..xmax, East ∈ ymin..ymax
+function regenRandHS(){
+  const seed=parseInt(gv('randSeed'))||42;
+  const n=parseInt(gv('numRandHS'))||6;
+  const rng=seededRng(seed);
+  S.randHS=[];
+  for(let i=0;i<n;i++){
+    S.randHS.push([
+      W.nmin+rng()*(W.nmax-W.nmin), // North ∈ nmin..nmax
+      W.emin+rng()*(W.emax-W.emin), // East  ∈ emin..emax
+      0.5+rng()*0.5,
+      80+rng()*120
+    ]);
+  }
+}
+
+// rhoAt(north, east) — h=[North, East, amp, sigma]
+function rhoAt(north, east){
+  let v=0;
+  [...S.randHS,...S.manualHS].forEach(h=>{
+    const dN=north-h[0], dE=east-h[1];
+    v+=h[2]*Math.exp(-(dN*dN+dE*dE)/(2*h[3]*h[3]));
+  });
+  return Math.min(v,1);
+}
+
+// ── Render map ───────────────────────────────────────────────────
+function renderMap(){
+  const W2=canvas.width, H=canvas.height;
+  if(!W2||!H) return;
+  ctx.clearRect(0,0,W2,H);
+
+  const hasMap=mapStyle!=='none';
+
+  // Background fill (tiles may have gaps at edges or on first load)
+  ctx.fillStyle=hasMap?'#111827':'#090b10';
+  ctx.fillRect(0,0,W2,H);
+
+  // Map tiles (bottom layer)
+  if(hasMap) drawMapTiles();
+
+  // Slight dark veil on light/osm styles to maintain readability of overlays
+  if(hasMap&&(mapStyle==='light'||mapStyle==='osm')){
+    ctx.fillStyle='rgba(5,8,18,0.30)'; ctx.fillRect(0,0,W2,H);
+  }
+
+  // Heatmap — rendered to offscreen canvas first so putImageData doesn't erase tiles
+  heatCanvas.width=W2; heatCanvas.height=H;
+  heatCtx.clearRect(0,0,W2,H);
+  const res=5;
+  const img=heatCtx.createImageData(W2,H);
+  for(let py=0;py<H;py+=res){
+    for(let px=0;px<W2;px+=res){
+      const w=c2w(px,py);
+      const v=rhoAt(w.north, w.east);
+      const r=Math.min(255,Math.round(v*2*255));
+      const g=Math.max(0,Math.round(v*255-100));
+      for(let dy=0;dy<res&&py+dy<H;dy++)
+        for(let dx=0;dx<res&&px+dx<W2;dx++){
+          const i=((py+dy)*W2+(px+dx))*4;
+          img.data[i]=r; img.data[i+1]=g; img.data[i+2]=0;
+          img.data[i+3]=Math.round(v*170+15);
+        }
+    }
+  }
+  heatCtx.putImageData(img,0,0);
+  ctx.save();
+  ctx.globalAlpha=hasMap?0.65:1.0;
+  ctx.drawImage(heatCanvas,0,0);
+  ctx.restore();
+
+  // Grid — East lines (vertical) and North lines (horizontal)
+  ctx.strokeStyle=hasMap?'rgba(120,140,170,0.25)':'rgba(80,90,110,0.2)'; ctx.lineWidth=0.5;
+  for(let e=W.emin;e<=W.emax;e+=300){        // vertical East lines
+    const p1=w2c(W.nmin,e), p2=w2c(W.nmax,e);
+    ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();
+  }
+  for(let n=W.nmin;n<=W.nmax;n+=300){        // horizontal North lines
+    const p1=w2c(n,W.emin), p2=w2c(n,W.emax);
+    ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();
+  }
+
+  // Routes — each drawn as a coloured dashed arrow with start/goal dots and label
+  const ROUTE_CLR=['#3b82f6','#f59e0b','#10b981','#a78bfa','#f87171','#2dd4bf','#fb923c','#e879f9'];
+  S.routes.forEach((rt,i)=>{
+    const clr=rt.color||ROUTE_CLR[i%ROUTE_CLR.length];
+    const p1=w2c(rt.startN,rt.startE), p2=w2c(rt.goalN,rt.goalE);
+    const dx=p2.x-p1.x, dy=p2.y-p1.y, len=Math.hypot(dx,dy)||1;
+    const ux=dx/len, uy=dy/len;
+    ctx.setLineDash([6,4]);
+    ctx.strokeStyle=clr; ctx.lineWidth=2; ctx.globalAlpha=0.75;
+    ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha=1;
+    // Direction arrows along route
+    ctx.fillStyle=clr+'99';
+    [0.25,0.5,0.75].forEach(t=>{
+      const px=p1.x+t*dx, py=p1.y+t*dy;
+      ctx.beginPath();ctx.moveTo(px,py);
+      ctx.lineTo(px-10*ux+5*uy,py-10*uy-5*ux);
+      ctx.lineTo(px-10*ux-5*uy,py-10*uy+5*ux);
+      ctx.fill();
+    });
+    // Start dot
+    ctx.fillStyle=clr; ctx.strokeStyle='#111827'; ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.arc(p1.x,p1.y,5,0,Math.PI*2);ctx.fill();ctx.stroke();
+    // Goal dot (larger)
+    ctx.beginPath();ctx.arc(p2.x,p2.y,6,0,Math.PI*2);ctx.fill();ctx.stroke();
+    // Label at midpoint
+    ctx.fillStyle=clr; ctx.font='bold 10px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(`${rt.label||'R'+(i+1)} ×${rt.numDrones}`,(p1.x+p2.x)/2,(p1.y+p2.y)/2-9);
+  });
+
+  // Random hotspots — h=[North, East, amp, sigma] → w2c(North, East)
+  S.randHS.forEach(h=>{
+    const p=w2c(h[0],h[1]);
+    ctx.strokeStyle='rgba(52,211,153,0.6)'; ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(p.x-6,p.y);ctx.lineTo(p.x+6,p.y);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(p.x,p.y-6);ctx.lineTo(p.x,p.y+6);ctx.stroke();
+    ctx.fillStyle='rgba(52,211,153,0.5)';
+    ctx.beginPath();ctx.arc(p.x,p.y,4,0,Math.PI*2);ctx.fill();
+  });
+
+  // Manual hotspots — h=[North, East, amp, sigma]
+  S.manualHS.forEach((h,i)=>{
+    const p=w2c(h[0],h[1]);
+    const sc=w2c(h[0], h[1]+h[3]*0.12).x - p.x; // sigma radius in pixels
+    ctx.strokeStyle='rgba(52,211,153,0.85)'; ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.arc(p.x,p.y,Math.max(4,Math.abs(sc)),0,Math.PI*2);ctx.stroke();
+    ctx.fillStyle='rgba(52,211,153,0.9)';
+    ctx.beginPath();ctx.arc(p.x,p.y,4,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='rgba(52,211,153,1)';
+    ctx.font='10px sans-serif';ctx.textAlign='left';
+    ctx.fillText('H'+(i+1),p.x+6,p.y-4);
+  });
+
+  // gNBs — bs=[North, East, Down] → w2c(North, East)
+  S.bs.forEach((bs,i)=>{
+    const p=w2c(bs[0],bs[1]);
+    ctx.strokeStyle='#f87171'; ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(p.x,p.y-14);ctx.lineTo(p.x,p.y+4);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(p.x-10,p.y-8);ctx.lineTo(p.x,p.y-14);ctx.lineTo(p.x+10,p.y-8);ctx.stroke();
+    ctx.fillStyle='#ef4444';
+    ctx.beginPath();ctx.arc(p.x,p.y+4,4,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#fca5a5';ctx.font='bold 10px sans-serif';ctx.textAlign='center';
+    ctx.fillText('gNB'+(i+1),p.x,p.y+20);
+  });
+
+  // Master BS — master=[North, East, Down]
+  const mp=w2c(S.master[0],S.master[1]);
+  ctx.fillStyle='#3b82f6';
+  ctx.fillRect(mp.x-7,mp.y-7,14,14);
+  ctx.fillStyle='#93c5fd';ctx.font='bold 10px sans-serif';ctx.textAlign='center';
+  ctx.fillText('MBS',mp.x,mp.y+20);
+
+  // Axis labels
+  ctx.fillStyle='rgba(100,116,139,0.55)';
+  ctx.font='10px sans-serif';
+  // East labels — horizontal axis (bottom)
+  ctx.textAlign='center';
+  [-1200,-600,0,600,1200].forEach(e=>{
+    const p=w2c(W.nmax-60, e);
+    ctx.fillText('E'+(e>=0?'+':'')+e, p.x, p.y);
+  });
+  // North labels — vertical axis (left)
+  ctx.textAlign='right';
+  [-600,-300,0,300,600].forEach(n=>{
+    const p=w2c(n, W.emin+10);
+    ctx.fillText('N'+(n>=0?'+':'')+n, p.x+55, p.y+4);
+  });
+  // Compass: East→ horizontal, North↓ vertical
+  {
+    const c=w2c(W.nmin+55, W.emax-120);
+    ctx.fillStyle='rgba(100,116,139,0.8)'; ctx.font='bold 10px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('E→  N↓', c.x, c.y);
+  }
+}
+
+// ── Mouse interactions ───────────────────────────────────────────
+canvas.addEventListener('mousedown',e=>{
+  S.drag=true; S.lastMouse={x:e.offsetX,y:e.offsetY};
+  const w=c2w(e.offsetX,e.offsetY); // {east, north}
+  if(w.north<W.nmin||w.north>W.nmax||w.east<W.emin||w.east>W.emax) return;
+  if(S.tool==='bs'){
+    addBS(Math.round(w.north), Math.round(w.east), -30);
+  } else if(S.tool==='hs'){
+    const amp=parseFloat(document.getElementById('hsAmp').value);
+    const sig=parseFloat(document.getElementById('hsSig').value);
+    S.manualHS.push([Math.round(w.north), Math.round(w.east), amp, sig]);
+    renderHSList(); renderMap();
+  } else if(S.tool==='del'){
+    const thresh=20; let removed=false;
+    S.bs=S.bs.filter(bs=>{
+      if(removed) return true;
+      const p=w2c(bs[0],bs[1]);
+      if(Math.hypot(p.x-e.offsetX,p.y-e.offsetY)<thresh){removed=true;return false;}
+      return true;
+    });
+    if(!removed){
+      S.manualHS=S.manualHS.filter(h=>{
+        if(removed) return true;
+        const p=w2c(h[0],h[1]);
+        if(Math.hypot(p.x-e.offsetX,p.y-e.offsetY)<thresh){removed=true;return false;}
+        return true;
+      });
+      renderHSList();
+    }
+    renderBSTable(); renderMap();
+  }
+});
+canvas.addEventListener('mousemove',e=>{
+  if(S.drag&&S.tool==='pan'&&S.lastMouse){
+    const scE=canvas.width/(W.emax-W.emin), scN=canvas.height/(W.nmax-W.nmin);
+    const sc=Math.min(scE,scN)*S.view.scale;
+    S.view.cx -= (e.offsetX-S.lastMouse.x)/sc;  // East pan
+    S.view.cy -= (e.offsetY-S.lastMouse.y)/sc;  // North pan
+    S.lastMouse={x:e.offsetX,y:e.offsetY};
+    renderMap();
+  }
+});
+canvas.addEventListener('mouseup',()=>{S.drag=false});
+canvas.addEventListener('wheel',e=>{
+  e.preventDefault();
+  S.view.scale*=e.deltaY>0?0.88:1.12;
+  S.view.scale=Math.min(Math.max(S.view.scale,0.25),6);
+  renderMap();
+},{passive:false});
+
+function resizeCanvas(){
+  const wrap=canvas.parentElement;
+  canvas.width=wrap.offsetWidth;
+  canvas.height=wrap.offsetHeight-36;
+  renderMap();
+}
+
+// ── BS table ─────────────────────────────────────────────────────
+function addBS(n,e,d){S.bs.push([n,e,d]);renderBSTable();renderMap();}
+function clearBS(){S.bs=[];renderBSTable();renderMap();}
+function renderBSTable(){
+  const tbody=document.getElementById('bsTbody');
+  tbody.innerHTML=S.bs.map((bs,i)=>`
+    <tr>
+      <td>${i+1}</td>
+      <td><input type="number" value="${bs[0]}" onchange="S.bs[${i}][0]=+this.value;renderMap()"></td>
+      <td><input type="number" value="${bs[1]}" onchange="S.bs[${i}][1]=+this.value;renderMap()"></td>
+      <td><input type="number" value="${bs[2]}" onchange="S.bs[${i}][2]=+this.value;renderMap()"></td>
+      <td><button class="btn btn-dan" style="padding:2px 6px;font-size:10px"
+          onclick="S.bs.splice(${i},1);renderBSTable();renderMap()">x</button></td>
+    </tr>`).join('');
+  document.getElementById('bsCount').textContent=S.bs.length;
+}
+
+// ── Hotspot list ─────────────────────────────────────────────────
+function renderHSList(){
+  const list=document.getElementById('hsList');
+  list.innerHTML=S.manualHS.map((h,i)=>`
+    <div class="hs-item">
+      <span>H${i+1}: N=${Math.round(h[0])} E=${Math.round(h[1])} amp=${h[2].toFixed(2)} σ=${Math.round(h[3])}</span>
+      <button class="btn btn-dan" style="padding:2px 6px;font-size:10px"
+          onclick="S.manualHS.splice(${i},1);renderHSList();renderMap()">x</button>
+    </div>`).join('');
+  document.getElementById('hsCount').textContent=S.manualHS.length;
+}
+
+// ── Config collection ────────────────────────────────────────────
+function collectConfig(){
+  const arrModel=gv('arrModel');
+  const base={
+    numDrones:gn('numDrones'), corridorLength:gn('corridorLength'),
+    flightTime:gn('flightTime'), updateRate:gn('updateRate'),
+    dronesPerSlot:gn('dronesPerSlot'), droneEast:gn('droneEast'),
+    delayMin:gn('delayMin'), delayMax:gn('delayMax'),
+    fc:gn('fc'), bw:gn('bw'), txPower:gn('txPower'), gNBGain:gn('gNBGain'),
+    noiseFig:gn('noiseFig'), snrThresh:gn('snrThresh'),
+    latRadio:gn('latRadio'), latCore:gn('latCore'), latVideo:gn('latVideo'),
+    wUnc:parseFloat(document.getElementById('wUnc').value),
+    wMap:parseFloat(document.getElementById('wMap').value),
+    wVid:parseFloat(document.getElementById('wVid').value),
+    rMin:gn('rMin'), kAoi:gn('kAoi'), tauMax:gn('tauMax'),
+    dCrit:gn('dCrit'), rBarSys:gn('rBarSys'),
+    numRandHS:gn('numRandHS'), randSeed:gn('randSeed'),
+    masterN:gn('masterN'), masterE:gn('masterE'), masterD:gn('masterD'),
+    arrModel,
+    schedPolicy:gv('schedPolicy'),
+    schedAlpha:parseFloat(document.getElementById('schedAlpha').value),
+    bs:S.bs, manualHS:S.manualHS,
+    routingMode:gv('routingMode'),
+    routingWd:parseFloat(document.getElementById('routingWd').value),
+    routingWr:parseFloat(document.getElementById('routingWr').value),
+    routingLambda:parseFloat(document.getElementById('routingLambda').value),
+    routingMass:gn('routingMass'),
+    routingFallSpeed:gn('routingFallSpeed'),
+    routingSheltering:gn('routingSheltering'),
+    routingI:gn('routingI'),
+    routingI0:gn('routingI0'),
+    routes:S.routes.map(rt=>({...rt}))
+  };
+  switch(arrModel){
+    case 'nhpp':
+      base.nhppHorizonMult=gn('nhppHorizonMult'); base.nhppLambdaMax=document.getElementById('nhppLambdaMax').value.trim()||'[]';
+      base.nhppPeakCenter=gn('nhppPeakCenter'); base.nhppPeakWidth=gn('nhppPeakWidth');
+      base.nhppBaseRate=gn('nhppBaseRate'); base.nhppPeakRate=gn('nhppPeakRate'); break;
+    case 'rush_hour':
+      base.rhHorizonMult=gn('rhHorizonMult'); base.rhPeak1=gn('rhPeak1'); base.rhPeak2=gn('rhPeak2');
+      base.rhPeakWidth=gn('rhPeakWidth'); base.rhBaseRate=gn('rhBaseRate'); base.rhPeakRate=gn('rhPeakRate'); break;
+    case 'batch':
+      base.batchHorizonMult=gn('batchHorizonMult'); base.batchLambda=gn('batchLambda');
+      base.batchSizeMin=gn('batchSizeMin'); base.batchSizeMax=gn('batchSizeMax'); base.batchJitter=gn('batchJitter'); break;
+    case 'deterministic':
+      base.detSpacing=base.numDrones>1?(base.delayMax-base.delayMin)/(base.numDrones-1):0; break;
+  }
+  return base;
+}
+
+// ── CSV builder ──────────────────────────────────────────────────
+function buildCSV(cfg){
+  const rows=[['section','key','value']];
+  [['fleet','numDrones',cfg.numDrones],['fleet','corridorLength',cfg.corridorLength],
+   ['fleet','flightTime',cfg.flightTime],['fleet','updateRate',cfg.updateRate],
+   ['fleet','dronesPerSlot',cfg.dronesPerSlot],['fleet','droneEast',cfg.droneEast],
+   ['fleet','delayMin',cfg.delayMin],['fleet','delayMax',cfg.delayMax],
+   ['radio','fc_GHz',cfg.fc],['radio','bw_MHz',cfg.bw],
+   ['radio','txPower_dBm',cfg.txPower],['radio','gNBGain_dBi',cfg.gNBGain],
+   ['radio','noiseFig_dB',cfg.noiseFig],['radio','snrThresh_dB',cfg.snrThresh],
+   ['latency','radioDelay_ms',cfg.latRadio],['latency','coreDelay_ms',cfg.latCore],
+   ['latency','videoDelay_ms',cfg.latVideo],
+   ['risk','w_unc',cfg.wUnc],['risk','w_map',cfg.wMap],['risk','w_vid',cfg.wVid],
+   ['risk','r_min',cfg.rMin],['risk','k_aoi',cfg.kAoi],['risk','tau_max',cfg.tauMax],
+   ['risk','d_crit',cfg.dCrit],['risk','R_bar_sys',cfg.rBarSys],
+   ['heatmap','numRandHS',cfg.numRandHS],['heatmap','randSeed',cfg.randSeed],
+   ['master','north',cfg.masterN],['master','east',cfg.masterE],['master','down',cfg.masterD],
+   ['scheduling','policy',cfg.schedPolicy],['scheduling','sched_alpha',cfg.schedAlpha],
+   ['arrival','arrivalModel',cfg.arrModel]
+  ].forEach(r=>rows.push(r));
+  switch(cfg.arrModel){
+    case 'nhpp':
+      rows.push(['arrival','nhpp_horizonMult',cfg.nhppHorizonMult],['arrival','nhpp_lambda_max',cfg.nhppLambdaMax],
+        ['arrival','nhpp_peakCenter',cfg.nhppPeakCenter],['arrival','nhpp_peakWidth',cfg.nhppPeakWidth],
+        ['arrival','nhpp_baseRate',cfg.nhppBaseRate],['arrival','nhpp_peakRate',cfg.nhppPeakRate]); break;
+    case 'rush_hour':
+      rows.push(['arrival','rh_horizonMult',cfg.rhHorizonMult],['arrival','rh_peak1_frac',cfg.rhPeak1],
+        ['arrival','rh_peak2_frac',cfg.rhPeak2],['arrival','rh_peakWidth_frac',cfg.rhPeakWidth],
+        ['arrival','rh_base_rate',cfg.rhBaseRate],['arrival','rh_peak_rate',cfg.rhPeakRate]); break;
+    case 'batch':
+      rows.push(['arrival','batch_horizonMult',cfg.batchHorizonMult],['arrival','batch_lambda',cfg.batchLambda],
+        ['arrival','batch_sizeMin',cfg.batchSizeMin],['arrival','batch_sizeMax',cfg.batchSizeMax],
+        ['arrival','batch_jitter',cfg.batchJitter]); break;
+    case 'deterministic':
+      rows.push(['arrival','det_spacing',cfg.detSpacing]); break;
+  }
+  // routing
+  [['routing','routing_mode',cfg.routingMode],
+   ['routing','routing_w_d',cfg.routingWd],['routing','routing_w_r',cfg.routingWr],
+   ['routing','routing_lambda',cfg.routingLambda],['routing','routing_uav_mass',cfg.routingMass],
+   ['routing','routing_fall_speed',cfg.routingFallSpeed],
+   ['routing','routing_sheltering',cfg.routingSheltering],
+   ['routing','routing_I',cfg.routingI],['routing','routing_I0',cfg.routingI0]
+  ].forEach(r=>rows.push(r));
+  // bs=[North,East,Down], hs=[North,East,amp,sigma]
+  cfg.bs.forEach((bs,i)=>{
+    rows.push(['gNB','bs'+(i+1)+'_north',bs[0]],['gNB','bs'+(i+1)+'_east',bs[1]],['gNB','bs'+(i+1)+'_down',bs[2]]);
+  });
+  cfg.manualHS.forEach((h,i)=>{
+    rows.push(['hotspot','hs'+(i+1)+'_north',h[0]],['hotspot','hs'+(i+1)+'_east',h[1]],
+              ['hotspot','hs'+(i+1)+'_amp',h[2]],['hotspot','hs'+(i+1)+'_sigma',h[3]]);
+  });
+  return rows.map(r=>r.join(',')).join('\n');
+}
+
+// ── MATLAB arrival block ─────────────────────────────────────────
+function buildArrivalBlock(cfg){
+  switch(cfg.arrModel){
+    case 'nhpp': return `
+    case 'nhpp'
+        cfg.nhpp_horizon    = cfg.maxStartDelay * ${cfg.nhppHorizonMult};
+        cfg.nhpp_lambda_max = ${cfg.nhppLambdaMax==='[]'?'[]':cfg.nhppLambdaMax};
+        cfg.lambdaProfile   = @(t) (cfg.numDrones / cfg.nhpp_horizon) * ...
+            (${cfg.nhppBaseRate} + ${cfg.nhppPeakRate} * exp(-0.5*((t - cfg.nhpp_horizon*${cfg.nhppPeakCenter})/(cfg.nhpp_horizon*${cfg.nhppPeakWidth})).^2));`;
+    case 'rush_hour': return `
+    case 'rush_hour'
+        cfg.nhpp_horizon  = cfg.maxStartDelay * ${cfg.rhHorizonMult};
+        cfg.rh_peak1_t    = cfg.nhpp_horizon * ${cfg.rhPeak1};
+        cfg.rh_peak2_t    = cfg.nhpp_horizon * ${cfg.rhPeak2};
+        cfg.rh_peak_width = cfg.nhpp_horizon * ${cfg.rhPeakWidth};
+        cfg.rh_base_rate  = ${cfg.rhBaseRate};
+        cfg.rh_peak_rate  = ${cfg.rhPeakRate};`;
+    case 'batch': return `
+    case 'batch'
+        cfg.nhpp_horizon  = cfg.maxStartDelay * ${cfg.batchHorizonMult};
+        cfg.batchLambda   = ${cfg.batchLambda};
+        cfg.batchSize     = [${cfg.batchSizeMin} ${cfg.batchSizeMax}];
+        cfg.batchJitter   = ${cfg.batchJitter};`;
+    case 'deterministic': return `
+    case 'deterministic'
+        cfg.det_spacing = (cfg.maxStartDelay - cfg.minStartDelay) / max(cfg.numDrones - 1, 1);`;
+    default: return `
+    otherwise
+        % uniform — no extra params`;
+  }
+}
+
+// ── MATLAB exporter ──────────────────────────────────────────────
+function exportMatlab(){
+  const cfg=collectConfig();
+  const bsMat=cfg.bs.map(b=>`    ${b[0]}  ${b[1]}  ${b[2]}`).join(';\n');
+  const hsLines=cfg.manualHS.length===0
+    ?'cfg.manualHotspots  = [];'
+    :cfg.manualHS.map((h,i)=>`cfg.manualHotspots(${i+1},:) = [${h[0]} ${h[1]} ${h[2].toFixed(2)} ${h[3]}];`).join('\n');
+  const alphaLine=cfg.schedPolicy==='hybrid'?`cfg.sched_alpha      = ${cfg.schedAlpha.toFixed(2)};`:'';
+  const routingBlock=`%% ---- Routing (Risk-A* pre-flight path planning) -----------
+cfg.routing.mode           = '${cfg.routingMode}';
+cfg.routing.w_d            = ${cfg.routingWd.toFixed(2)};
+cfg.routing.w_r            = ${cfg.routingWr.toFixed(2)};
+cfg.routing.lambda         = ${cfg.routingLambda};
+cfg.routing.uav_mass       = ${cfg.routingMass};
+cfg.routing.uav_fall_speed = ${cfg.routingFallSpeed};
+cfg.routing.I              = ${cfg.routingI};
+cfg.routing.I0             = ${cfg.routingI0};
+cfg.routing.uav_sheltering = ${cfg.routingSheltering};`;
+  // Routes block — always emitted; numDrones auto-computed by validate_uam_config
+  const totalDrones=cfg.routes.reduce((s,r)=>s+(+r.numDrones||0),0);
+  const r0=cfg.routes[0]||{startN:0,startE:-(cfg.corridorLength/2),goalN:0,goalE:cfg.corridorLength/2};
+  const refLen=Math.hypot(r0.goalN-r0.startN,r0.goalE-r0.startE)||cfg.corridorLength||3000;
+  const routesBlock=`%% ---- Routes (fleet groups with individual entry/exit) -----------
+% cfg.numDrones is auto-computed as sum([cfg.routes.numDrones]).
+% Per-drone flight time = norm(goal - start) / cfg.speedVal.
+${cfg.routes.map((rt,i)=>`cfg.routes(${i+1}).numDrones = ${+rt.numDrones||1};
+cfg.routes(${i+1}).start     = [${rt.startN}  ${rt.startE}];   % [North, East]
+cfg.routes(${i+1}).goal      = [${rt.goalN}  ${rt.goalE}];   % [North, East]
+cfg.routes(${i+1}).label     = '${(rt.label||'Route '+(i+1)).replace(/'/g,"''")}';`).join('\n')}`;
+  const code=`function cfg = build_scenario_config()
+%% Auto-generated by UAM Scenario Builder (web)
+%% ${new Date().toISOString()}
+
+%% ---- Arrival model ----------------------------------------
+arrModel = '${cfg.arrModel}';
+
+%% ---- Core simulation parameters ---------------------------
+cfg.schedulingPolicy = '${cfg.schedPolicy}';
+${alphaLine}
+
+${routesBlock}
+
+cfg.numDrones       = ${totalDrones};   % auto-computed by validate_uam_config
+cfg.corridorLength  = ${refLen.toFixed(1)};   % first route length (for speed)
+cfg.flightTime      = ${cfg.flightTime};
+cfg.updateRate      = ${cfg.updateRate};
+cfg.speedVal        = cfg.corridorLength / cfg.flightTime;
+
+cfg.fc              = ${cfg.fc}e9;
+cfg.pTransmitDrone  = ${cfg.txPower};
+cfg.gNB_Gain        = ${cfg.gNBGain};
+cfg.noiseFigure     = ${cfg.noiseFig};
+cfg.bw              = ${cfg.bw}e6;
+cfg.thermalNoise    = -174 + 10*log10(cfg.bw);
+cfg.thresholdSNR    = ${cfg.snrThresh};
+
+cfg.r_min           = ${cfg.rMin};
+cfg.k_aoi           = ${cfg.kAoi};
+cfg.dronesPerSlot   = ${cfg.dronesPerSlot};
+
+cfg.droneEastPos    = ${cfg.droneEast};   % legacy — overridden by cfg.routes
+cfg.minStartDelay   = ${cfg.delayMin};
+cfg.maxStartDelay   = ${cfg.delayMax};
+
+cfg.radioDelay      = ${cfg.latRadio};
+cfg.coreDelay       = ${cfg.latCore};
+cfg.videoDelay      = ${cfg.latVideo};
+cfg.latency_base    = cfg.radioDelay + cfg.coreDelay + cfg.videoDelay;
+
+cfg.w_unc           = ${cfg.wUnc.toFixed(4)};
+cfg.w_map           = ${cfg.wMap.toExponential(4)};
+cfg.w_vid           = ${cfg.wVid.toFixed(2)};
+cfg.v_max           = cfg.speedVal;
+cfg.tau_max         = ${cfg.tauMax};
+cfg.d_crit          = ${cfg.dCrit};
+
+cfg.R_bar_sys       = ${cfg.rBarSys};
+
+cfg.microBSPos = [
+${bsMat} ];
+cfg.masterPos  = [${cfg.masterN}  ${cfg.masterE}  ${cfg.masterD}];
+
+cfg.rng_seed        = ${cfg.randSeed};
+cfg.numHotspots     = ${cfg.numRandHS};
+${hsLines}
+
+${routingBlock}
+
+%% ---- Arrival model fields ----------------------------------
+cfg.arrivalModel = arrModel;
+
+switch arrModel
+${buildArrivalBlock(cfg)}
+end
+end`;
+  download('build_scenario_config.m',code,'text/plain');
+  document.getElementById('codePreview').textContent=code;
+  updateSummary(cfg);
+}
+
+function exportCSV(){
+  const cfg=collectConfig();
+  const csv=buildCSV(cfg);
+  download('uam_scenario_config.csv',csv,'text/csv');
+  document.getElementById('codePreview').textContent=csv;
+  updateSummary(cfg);
+}
+function previewConfig(){
+  const cfg=collectConfig();
+  document.getElementById('codePreview').textContent=buildCSV(cfg);
+  updateSummary(cfg);
+}
+function updateSummary(cfg){
+  const routingInfo=cfg.routingMode==='risk_astar'
+    ?`risk_astar (w_d=${cfg.routingWd.toFixed(2)}, w_r=${cfg.routingWr.toFixed(2)})`
+    :'static';
+  const totalDrones=cfg.routes.reduce((s,r)=>s+(+r.numDrones||0),0);
+  const routesSummary=cfg.routes.map((r,i)=>`R${i+1}:${r.numDrones}`).join(' ');
+  document.getElementById('summaryBox').textContent=
+    `${totalDrones} drones  |  ${cfg.routes.length} route(s): ${routesSummary}  |  ${cfg.bs.length} gNBs\n`+
+    `policy: ${cfg.schedPolicy}${cfg.schedPolicy==='hybrid'?' (α='+cfg.schedAlpha.toFixed(2)+')':''}`+
+    `  |  arrival: ${cfg.arrModel}\n`+
+    `w=[${cfg.wUnc.toFixed(2)}, ${cfg.wMap.toExponential(1)}, ${cfg.wVid.toFixed(1)}]  |  seed ${cfg.randSeed}\n`+
+    `routing: ${routingInfo}`;
+}
+function download(name,content,mime){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([content],{type:mime}));
+  a.download=name; a.click();
+}
+
+// ── Import CSV ───────────────────────────────────────────────────
+function importCSV(){document.getElementById('csvFile').click();}
+function loadCSV(evt){
+  const file=evt.target.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const lines=e.target.result.split('\n').slice(1);
+    const map={};
+    const bsN={},bsE={},bsD={},hsN={},hsE={},hsA={},hsSig={};
+    lines.forEach(line=>{
+      const [sec,key,val]=line.split(',');
+      if(!key||val===undefined) return;
+      map[key]=val.trim();
+      if(sec==='gNB'){
+        const m=key.match(/^bs(\d+)_(north|east|down)$/);
+        if(m){const[,n,ax]=m;({north:bsN,east:bsE,down:bsD})[ax][n]=parseFloat(val);}
+      }
+      if(sec==='hotspot'){
+        const m=key.match(/^hs(\d+)_(north|east|amp|sigma)$/);
+        if(m){const[,n,ax]=m;({north:hsN,east:hsE,amp:hsA,sigma:hsSig})[ax][n]=parseFloat(val);}
+      }
+    });
+    const sv=(id,k)=>{if(map[k]!==undefined)document.getElementById(id).value=map[k];};
+    sv('numDrones','numDrones');sv('corridorLength','corridorLength');
+    sv('flightTime','flightTime');sv('updateRate','updateRate');
+    sv('dronesPerSlot','dronesPerSlot');sv('droneEast','droneEast');
+    sv('delayMin','delayMin');sv('delayMax','delayMax');
+    sv('fc','fc_GHz');sv('bw','bw_MHz');
+    sv('txPower','txPower_dBm');sv('gNBGain','gNBGain_dBi');
+    sv('noiseFig','noiseFig_dB');sv('snrThresh','snrThresh_dB');
+    sv('latRadio','radioDelay_ms');sv('latCore','coreDelay_ms');sv('latVideo','videoDelay_ms');
+    sv('rMin','r_min');sv('kAoi','k_aoi');sv('tauMax','tau_max');
+    sv('dCrit','d_crit');sv('rBarSys','R_bar_sys');
+    sv('numRandHS','numRandHS');sv('randSeed','randSeed');
+    sv('masterN','north');sv('masterE','east');sv('masterD','down');
+    const setSl=(id,valId,k,fmt)=>{
+      if(map[k]){document.getElementById(id).value=map[k];
+                 document.getElementById(valId).textContent=fmt(parseFloat(map[k]));}
+    };
+    setSl('wUnc','wUncV','w_unc',v=>v.toFixed(2));
+    setSl('wMap','wMapV','w_map',v=>v.toExponential(1));
+    setSl('wVid','wVidV','w_vid',v=>v.toFixed(1));
+    setSl('schedAlpha','schedAlphaV','sched_alpha',v=>v.toFixed(2));
+    if(map['policy']){document.getElementById('schedPolicy').value=map['policy'];onSchedChange();}
+    if(map['arrivalModel']){document.getElementById('arrModel').value=map['arrivalModel'];onArrModelChange();}
+    sv('nhppHorizonMult','nhpp_horizonMult');sv('nhppLambdaMax','nhpp_lambda_max');
+    sv('nhppPeakCenter','nhpp_peakCenter');sv('nhppPeakWidth','nhpp_peakWidth');
+    sv('nhppBaseRate','nhpp_baseRate');sv('nhppPeakRate','nhpp_peakRate');
+    sv('rhHorizonMult','rh_horizonMult');sv('rhPeak1','rh_peak1_frac');sv('rhPeak2','rh_peak2_frac');
+    sv('rhPeakWidth','rh_peakWidth_frac');sv('rhBaseRate','rh_base_rate');sv('rhPeakRate','rh_peak_rate');
+    sv('batchHorizonMult','batch_horizonMult');sv('batchLambda','batch_lambda');
+    sv('batchSizeMin','batch_sizeMin');sv('batchSizeMax','batch_sizeMax');sv('batchJitter','batch_jitter');
+    if(map['routing_mode']){document.getElementById('routingMode').value=map['routing_mode'];onRoutingModeChange();}
+    sv('routingLambda','routing_lambda');sv('routingMass','routing_uav_mass');
+    sv('routingFallSpeed','routing_fall_speed');sv('routingSheltering','routing_sheltering');
+    sv('routingI','routing_I');sv('routingI0','routing_I0');
+    if(map['routing_w_d']){onWdChange(map['routing_w_d']);};
+    S.bs=[];
+    [...new Set(Object.keys(bsN))].sort((a,b)=>a-b)
+      .forEach(i=>S.bs.push([bsN[i]||0, bsE[i]||0, bsD[i]||0]));
+    S.manualHS=[];
+    [...new Set(Object.keys(hsN))].sort((a,b)=>a-b)
+      .forEach(i=>S.manualHS.push([hsN[i]||0, hsE[i]||0, hsA[i]||0.75, hsSig[i]||120]));
+    S.master=[parseFloat(map['north'])||0, parseFloat(map['east'])||0, parseFloat(map['down'])||0];
+    renderBSTable();renderHSList();regenRandHS();renderMap();
+    updateDetSpacing(); evt.target.value='';
+  };
+  reader.readAsText(file);
+}
+
+// ── Routes ───────────────────────────────────────────────────────
+const ROUTE_PALETTE=['#3b82f6','#f59e0b','#10b981','#a78bfa','#f87171','#2dd4bf','#fb923c','#e879f9'];
+
+function addRoute(){
+  const i=S.routes.length;
+  const prev=S.routes[i-1]||{startN:0,startE:-1500,goalN:0,goalE:1500};
+  S.routes.push({
+    label:'Route '+(i+1),
+    numDrones:3,
+    startN:prev.startN+(i>0?200:0),
+    startE:prev.startE,
+    goalN:prev.goalN+(i>0?200:0),
+    goalE:prev.goalE,
+    color:ROUTE_PALETTE[i%ROUTE_PALETTE.length]
+  });
+  renderRoutesTable(); syncDroneCount(); renderMap();
+}
+
+function renderRoutesTable(){
+  const tbody=document.getElementById('routeTbody');
+  if(!tbody) return;
+  tbody.innerHTML=S.routes.map((rt,i)=>`
+    <tr>
+      <td><span style="color:${rt.color||ROUTE_PALETTE[i%ROUTE_PALETTE.length]};font-weight:700">${i+1}</span></td>
+      <td><input type="text" value="${(rt.label||'').replace(/"/g,'&quot;')}" style="width:54px"
+          onchange="S.routes[${i}].label=this.value;renderMap()"></td>
+      <td><input type="number" value="${rt.numDrones}" min="1" style="width:42px"
+          onchange="S.routes[${i}].numDrones=+this.value;syncDroneCount();renderMap()"></td>
+      <td><input type="number" value="${rt.startN}" style="width:54px"
+          onchange="S.routes[${i}].startN=+this.value;renderMap()"></td>
+      <td><input type="number" value="${rt.startE}" style="width:54px"
+          onchange="S.routes[${i}].startE=+this.value;renderMap()"></td>
+      <td><input type="number" value="${rt.goalN}" style="width:54px"
+          onchange="S.routes[${i}].goalN=+this.value;renderMap()"></td>
+      <td><input type="number" value="${rt.goalE}" style="width:54px"
+          onchange="S.routes[${i}].goalE=+this.value;renderMap()"></td>
+      <td><button class="btn btn-dan" style="padding:2px 6px;font-size:10px"
+          onclick="S.routes.splice(${i},1);renderRoutesTable();syncDroneCount();renderMap()">×</button></td>
+    </tr>`).join('');
+  syncDroneCount();
+}
+
+function syncDroneCount(){
+  const total=S.routes.reduce((s,r)=>s+(+r.numDrones||0),0);
+  const el=document.getElementById('routeTotal');
+  if(el) el.textContent=total;
+  const nd=document.getElementById('numDrones');
+  if(nd) nd.value=total;
+}
+
+// ── Import .m ────────────────────────────────────────────────────
+function importMatlabFile(){ document.getElementById('mFile').click(); }
+
+function loadMatlabConfig(evt){
+  const file=evt.target.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=e=>{ parseMatlabConfig(e.target.result, file.name); evt.target.value=''; };
+  reader.readAsText(file);
+}
+
+function parseMatlabConfig(raw, fname){
+  // Strip MATLAB line-continuation (...\n) before all regex work
+  const src=raw.replace(/\.\.\.\s*\n\s*/g,' ');
+
+  // ── Regex helpers ──────────────────────────────────────────────
+  // cfg.FIELD = NUMBER;   (handles int, float, scientific notation, negatives)
+  function numField(field){
+    const m=src.match(new RegExp('cfg\\.'+field+'\\s*=\\s*([\\-+]?[\\d.]+(?:[eE][\\-+]?\\d+)?)\\s*;'));
+    return m ? parseFloat(m[1]) : null;
+  }
+  // cfg.FIELD = 'STRING';
+  function strField(field){
+    const m=src.match(new RegExp("cfg\\."+field+"\\s*=\\s*'([^']+)'\\s*;"));
+    return m ? m[1] : null;
+  }
+  // cfg.routing.FIELD = NUMBER|'STRING';
+  function routingNum(field){
+    const m=src.match(new RegExp('cfg\\.routing\\.'+field+'\\s*=\\s*([\\-+]?[\\d.]+(?:[eE][\\-+]?\\d+)?)\\s*;'));
+    return m ? parseFloat(m[1]) : null;
+  }
+  function routingStr(field){
+    const m=src.match(new RegExp("cfg\\.routing\\."+field+"\\s*=\\s*'([^']+)'\\s*;"));
+    return m ? m[1] : null;
+  }
+  // top-level variable:  varname = 'STRING';
+  function topVar(v){
+    const m=src.match(new RegExp("(?:^|\\n)\\s*"+v+"\\s*=\\s*'([^']+)'\\s*;"));
+    return m ? m[1] : null;
+  }
+
+  // ── DOM setters ─────────────────────────────────────────────────
+  function setV(id,val){
+    if(val==null||val!==val) return;  // skip null and NaN
+    const el=document.getElementById(id);
+    if(el) el.value=val;
+  }
+  function setSl(id,dispId,val,fmt){
+    if(val==null||val!==val) return;
+    setV(id,val);
+    const el=document.getElementById(dispId);
+    if(el) el.textContent=fmt(parseFloat(val));
+  }
+
+  // ── Scalar fields ────────────────────────────────────────────────
+  setV('numDrones',      numField('numDrones'));
+  setV('corridorLength', numField('corridorLength'));
+  setV('flightTime',     numField('flightTime'));
+  setV('updateRate',     numField('updateRate'));
+  setV('dronesPerSlot',  numField('dronesPerSlot'));
+  setV('droneEast',      numField('droneEastPos'));
+  setV('delayMin',       numField('minStartDelay'));
+  setV('delayMax',       numField('maxStartDelay'));
+
+  // fc: stored in Hz (e.g. 3.5e9) → display in GHz
+  const fcHz=numField('fc');
+  if(fcHz!=null) setV('fc', fcHz>=1e6 ? parseFloat((fcHz/1e9).toPrecision(6)) : fcHz);
+
+  // bw: stored in Hz (e.g. 20e6) → display in MHz
+  const bwHz=numField('bw');
+  if(bwHz!=null) setV('bw', bwHz>=1e3 ? bwHz/1e6 : bwHz);
+
+  setV('txPower',   numField('pTransmitDrone'));
+  setV('gNBGain',   numField('gNB_Gain'));
+  setV('noiseFig',  numField('noiseFigure'));
+  setV('snrThresh', numField('thresholdSNR'));
+  setV('latRadio',  numField('radioDelay'));
+  setV('latCore',   numField('coreDelay'));
+  setV('latVideo',  numField('videoDelay'));
+  setV('rMin',      numField('r_min'));
+  setV('kAoi',      numField('k_aoi'));
+  setV('tauMax',    numField('tau_max'));
+  setV('dCrit',     numField('d_crit'));
+  setV('rBarSys',   numField('R_bar_sys'));
+  setV('numRandHS', numField('numHotspots'));
+  setV('randSeed',  numField('rng_seed'));
+
+  // ── Sliders ──────────────────────────────────────────────────────
+  setSl('wUnc','wUncV', numField('w_unc'), v=>v.toFixed(2));
+  setSl('wMap','wMapV', numField('w_map'), v=>parseFloat(v).toExponential(1));
+  setSl('wVid','wVidV', numField('w_vid'), v=>parseFloat(v).toFixed(1));
+
+  // ── Scheduling ───────────────────────────────────────────────────
+  const pol=strField('schedulingPolicy');
+  if(pol){ setV('schedPolicy',pol); onSchedChange(); }
+  setSl('schedAlpha','schedAlphaV', numField('sched_alpha'), v=>v.toFixed(2));
+
+  // ── Arrival model ─────────────────────────────────────────────────
+  const arrM=topVar('arrModel');
+  if(arrM){ setV('arrModel',arrM); onArrModelChange(); }
+
+  // horizon multiplier — shared by nhpp / rush_hour / batch
+  const hmatch=src.match(/cfg\.nhpp_horizon\s*=\s*cfg\.maxStartDelay\s*\*\s*([\d.]+)/);
+  if(hmatch){
+    const mult=hmatch[1];
+    setV('nhppHorizonMult', mult);
+    setV('rhHorizonMult',   mult);
+    setV('batchHorizonMult',mult);
+  }
+
+  // NHPP: extract lambda_max, and decode the lambdaProfile anonymous function
+  const lmatch=src.match(/cfg\.nhpp_lambda_max\s*=\s*([^;]+)\s*;/);
+  if(lmatch){
+    const v=lmatch[1].trim();
+    document.getElementById('nhppLambdaMax').value = v==='[]' ? '' : v;
+  }
+  // lambdaProfile = @(t) (N/H) * (BASE + PEAK * exp(-0.5*((t-H*C)/(H*W)).^2))
+  const lp=src.match(/\(([^+*()]+)\+\s*([\d.]+)\s*\*\s*exp\(-0\.5\*\(\(t\s*-\s*cfg\.nhpp_horizon\s*\*\s*([\d.]+)\)\/\(cfg\.nhpp_horizon\s*\*\s*([\d.]+)\)/);
+  if(lp){
+    const base=parseFloat(lp[1]);
+    if(!isNaN(base)) setV('nhppBaseRate', base);
+    setV('nhppPeakRate',   lp[2]);
+    setV('nhppPeakCenter', lp[3]);
+    setV('nhppPeakWidth',  lp[4]);
+  }
+
+  // Rush hour
+  const rh1=src.match(/cfg\.rh_peak1_t\s*=\s*cfg\.nhpp_horizon\s*\*\s*([\d.]+)/);
+  if(rh1) setV('rhPeak1', rh1[1]);
+  const rh2=src.match(/cfg\.rh_peak2_t\s*=\s*cfg\.nhpp_horizon\s*\*\s*([\d.]+)/);
+  if(rh2) setV('rhPeak2', rh2[1]);
+  const rhpw=src.match(/cfg\.rh_peak_width\s*=\s*cfg\.nhpp_horizon\s*\*\s*([\d.]+)/);
+  if(rhpw) setV('rhPeakWidth', rhpw[1]);
+  const rhbr=src.match(/cfg\.rh_base_rate\s*=\s*([\d.e+\-]+)/);
+  if(rhbr) setV('rhBaseRate', rhbr[1]);
+  const rhpr=src.match(/cfg\.rh_peak_rate\s*=\s*([\d.e+\-]+)/);
+  if(rhpr) setV('rhPeakRate', rhpr[1]);
+
+  // Batch
+  const blam=src.match(/cfg\.batchLambda\s*=\s*([\d.e+\-]+)/);
+  if(blam) setV('batchLambda', blam[1]);
+  const bsz=src.match(/cfg\.batchSize\s*=\s*\[(\d+)\s+(\d+)\]/);
+  if(bsz){ setV('batchSizeMin', bsz[1]); setV('batchSizeMax', bsz[2]); }
+  const bjit=src.match(/cfg\.batchJitter\s*=\s*([\d.e+\-]+)/);
+  if(bjit) setV('batchJitter', bjit[1]);
+
+  // ── Routing ──────────────────────────────────────────────────────
+  const rm=routingStr('mode');
+  if(rm){ setV('routingMode',rm); onRoutingModeChange(); }
+  const wd=routingNum('w_d');
+  if(wd!=null) onWdChange(wd);
+  setV('routingLambda',     routingNum('lambda'));
+  setV('routingMass',       routingNum('uav_mass'));
+  setV('routingFallSpeed',  routingNum('uav_fall_speed'));
+  setV('routingSheltering', routingNum('uav_sheltering'));
+  setV('routingI',          routingNum('I'));
+  setV('routingI0',         routingNum('I0'));
+
+  // ── BS matrix: cfg.microBSPos = [ row; row; ... ]; ────────────────
+  // Builder stores S.bs as [North, East, Down] which is the same column order
+  // used in the exported .m (exportMatlab writes b[0]=North, b[1]=East, b[2]=Down)
+  const bsM=src.match(/cfg\.microBSPos\s*=\s*\[([\s\S]*?)\]\s*;/);
+  if(bsM){
+    S.bs=[];
+    bsM[1].split(/[;\n]/).forEach(row=>{
+      const nums=row.trim().match(/[-+]?[\d.]+(?:[eE][-+]?\d+)?/g);
+      if(nums&&nums.length>=3) S.bs.push(nums.slice(0,3).map(parseFloat));
+    });
+    renderBSTable();
+  }
+
+  // Master BS: cfg.masterPos = [N  E  D];
+  const mpM=src.match(/cfg\.masterPos\s*=\s*\[([^\]]+)\]\s*;/);
+  if(mpM){
+    const n=mpM[1].trim().match(/[-+]?[\d.]+(?:[eE][-+]?\d+)?/g);
+    if(n&&n.length>=3){
+      setV('masterN',parseFloat(n[0])); setV('masterE',parseFloat(n[1])); setV('masterD',parseFloat(n[2]));
+    }
+  }
+
+  // ── Manual hotspots: cfg.manualHotspots(i,:) = [N E amp sigma]; ───
+  S.manualHS=[];
+  const hsAll=[...src.matchAll(/cfg\.manualHotspots\s*\(\s*(\d+)\s*,\s*:\s*\)\s*=\s*\[([^\]]+)\]\s*;/g)];
+  hsAll.sort((a,b)=>parseInt(a[1])-parseInt(b[1])).forEach(m=>{
+    const nums=m[2].trim().split(/\s+/).map(parseFloat);
+    if(nums.length>=4) S.manualHS.push(nums.slice(0,4));
+  });
+
+  // ── Routes: cfg.routes(i).numDrones / .start / .goal / .label ───
+  {
+    const idxSet=new Set([...src.matchAll(/cfg\.routes\s*\(\s*(\d+)\s*\)/g)].map(m=>+m[1]));
+    const parsed=[];
+    [...idxSet].sort((a,b)=>a-b).forEach(idx=>{
+      const nm=src.match(new RegExp('cfg\\.routes\\s*\\(\\s*'+idx+'\\s*\\)\\.numDrones\\s*=\\s*(\\d+)'));
+      const sm=src.match(new RegExp('cfg\\.routes\\s*\\(\\s*'+idx+'\\s*\\)\\.start\\s*=\\s*\\[([^\\]]+)\\]'));
+      const gm=src.match(new RegExp('cfg\\.routes\\s*\\(\\s*'+idx+'\\s*\\)\\.goal\\s*=\\s*\\[([^\\]]+)\\]'));
+      const lm=src.match(new RegExp("cfg\\.routes\\s*\\(\\s*"+idx+"\\s*\\)\\.label\\s*=\\s*'([^']+)'"));
+      const sn=sm?sm[1].trim().split(/\s+/).map(parseFloat):[0,-1500];
+      const gn=gm?gm[1].trim().split(/\s+/).map(parseFloat):[0,1500];
+      parsed.push({
+        label: lm?lm[1]:'Route '+idx,
+        numDrones: nm?+nm[1]:1,
+        startN:sn[0]||0, startE:sn[1]||0,
+        goalN:gn[0]||0,  goalE:gn[1]||0,
+        color:ROUTE_PALETTE[(idx-1)%ROUTE_PALETTE.length]
+      });
+    });
+    if(parsed.length>0){
+      S.routes=parsed;
+    } else {
+      // Fall back to legacy corridorLength / droneEastPos
+      const cLen=numField('corridorLength')||3000;
+      const east=numField('droneEastPos')||0;
+      S.routes=[{label:'Route 1',numDrones:numField('numDrones')||5,
+                 startN:0,startE:-cLen/2,goalN:0,goalE:cLen/2,color:ROUTE_PALETTE[0]}];
+    }
+    renderRoutesTable();
+    syncDroneCount();
+  }
+
+  // ── Refresh UI ────────────────────────────────────────────────────
+  renderHSList();
+  regenRandHS();
+  renderMap();
+  updateDetSpacing();
+  showToast('Loaded ' + fname + ' — review fields before exporting');
+}
+
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;
+  t.classList.add('show');
+  clearTimeout(t._tid);
+  t._tid=setTimeout(()=>t.classList.remove('show'), 3500);
+}
+
+const ro=new ResizeObserver(resizeCanvas);
+ro.observe(canvas.parentElement);
+renderBSTable();
+renderRoutesTable();
+regenRandHS();
+updateDetSpacing();
+setTimeout(resizeCanvas,100);
+</script>
+<div id="toast"></div>
+</body>
+</html>

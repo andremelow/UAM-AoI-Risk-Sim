@@ -1,0 +1,28 @@
+# Dados de experimento (gerados, grandes)
+csv_export/
+uam-sim-new/csv_export/
+uam-sim-new/csv_export_old/
+
+# MATLAB artefatos
+*.asv
+*.mex*
+*.slxc
+*.autosave
+codegen/
+slprj/
+
+# R artefatos
+.Rhistory
+.RData
+.Rproj.user/
+*_cache/
+*_files/
+
+# Logs e temporários
+*.log
+*.tmp
+*.bak
+
+# OS
+.DS_Store
+Thumbs.db
