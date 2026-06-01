@@ -83,8 +83,8 @@ make_ply <- function(d, y_col, y_title) {
 }
 
 # ── Retorna tagList com layout 2+2+1 para (sc, k) ───────────────────────────
-show_plots <- function(sc, k) {
-  d <- filter(df, scenario == sc, K == k)
+show_plots <- function(sc, k = NULL) {
+  d <- if (is.null(k)) filter(df, scenario == sc) else filter(df, scenario == sc, K == k)
   p <- list(
     h1     = make_ply(d, "mean_h1",          "AoI médio h₁ (slots)"),
     risk   = make_ply(d, "mean_risk",        "Risco médio total"),
@@ -108,12 +108,13 @@ show_plots <- function(sc, k) {
   )
 }
 
-# ── Sub-tabs K para um cenário ───────────────────────────────────────────────
+# ── Sub-tabs K para um cenário (Geral + K individuais) ──────────────────────
 k_tabs <- function(sc) {
-  k_vals <- sort(unique(df$K))
-  panels <- lapply(k_vals, function(k) {
+  k_vals  <- sort(unique(df$K))
+  k_panels <- lapply(k_vals, function(k) {
     nav_panel(paste0("K = ", k), show_plots(sc, k))
   })
+  panels <- c(list(nav_panel("Geral", show_plots(sc))), k_panels)
   do.call(navset_tab, c(panels, list(id = paste0("ktab_", sc))))
 }
 ```
