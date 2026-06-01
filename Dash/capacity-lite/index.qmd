@@ -6,6 +6,14 @@ format:
     theme: darkly
     page-layout: full
     self-contained: true
+    include-after-body:
+      text: |
+        <script>
+        /* Força plotly a redimensionar quando um sub-tab fica visível */
+        document.addEventListener('shown.bs.tab', function() {
+          window.dispatchEvent(new Event('resize'));
+        });
+        </script>
 execute:
   echo: false
   warning: false
@@ -14,8 +22,9 @@ execute:
 
 ```{r setup, include=FALSE}
 library(dplyr)
-library(ggplot2)
 library(plotly)
+library(bslib)
+library(htmltools)
 
 df <- read.csv("data/capacity_summary.csv", stringsAsFactors = FALSE)
 
@@ -27,228 +36,114 @@ POL_COLORS <- c(
   "risk-aware"       = "#7F77DD",
   "max-weight-drift" = "#F4A261"
 )
-DARK_BG  <- "#1e1e2e"
-PANEL_BG <- "#13131f"
-TEXT_COL <- "#cdd6f4"
-AXIS_COL <- "#a6adc8"
-GRID_COL <- "#2a2a4a"
+BG   <- "#1e1e2e"; PANEL <- "#13131f"
+TEXT <- "#cdd6f4"; AXIS  <- "#a6adc8"; GRID <- "#2a2a4a"
 
-# Linha tracejada por K para distinguir sem precisar de filtro interativo
-DASH_MAP <- c("1" = "solid", "2" = "dash", "4" = "dot", "8" = "dashdot")
-
+# ── Gráfico C × métrica por política (filtrado por sc e K) ──────────────────
 make_ply <- function(d, y_col, y_title) {
-  if (nrow(d) == 0) {
-    return(plot_ly() |>
-      layout(title = list(text = y_title, font = list(color = TEXT_COL)),
-             paper_bgcolor = DARK_BG, plot_bgcolor = PANEL_BG))
+  agg <- if (nrow(d) > 0)
+    group_by(d, C, policy) |> summarise(y = mean(.data[[y_col]], na.rm=TRUE), .groups="drop")
+  else
+    data.frame(C=integer(), policy=character(), y=double())
+
+  pols <- intersect(names(POL_COLORS), unique(agg$policy))
+  fig  <- plot_ly()
+
+  for (pol in pols) {
+    sub <- filter(agg, policy == pol)
+    fig <- add_trace(fig,
+      data = sub, x = ~C, y = ~y,
+      type = "scatter", mode = "lines+markers",
+      name = pol,
+      line   = list(color = POL_COLORS[pol], width = 2),
+      marker = list(color = POL_COLORS[pol], size  = 5),
+      hovertemplate = paste0("<b>", pol, "</b><br>C=%{x}<br>",
+                             y_title, "=%{y:.3g}<extra></extra>")
+    )
   }
 
-  agg <- d |>
-    group_by(C, K, policy) |>
-    summarise(y = mean(.data[[y_col]], na.rm = TRUE), .groups = "drop")
-
-  pols_present <- intersect(names(POL_COLORS), unique(agg$policy))
-  ks_present   <- sort(unique(agg$K))
-
-  fig <- plot_ly()
-  for (pol in pols_present) {
-    for (k in ks_present) {
-      sub <- filter(agg, policy == pol, K == k)
-      if (nrow(sub) == 0) next
-      show_leg <- k == ks_present[1]    # legenda só na primeira linha de cada pol
-      fig <- add_trace(fig,
-        data = sub, x = ~C, y = ~y,
-        type = "scatter", mode = "lines+markers",
-        name = pol,
-        legendgroup = pol,
-        showlegend = show_leg,
-        line   = list(color = POL_COLORS[pol],
-                      dash  = DASH_MAP[as.character(k)],
-                      width = 1.8),
-        marker = list(color = POL_COLORS[pol], size = 4),
-        hovertemplate = paste0(
-          "<b>", pol, "</b>  K=", k,
-          "<br>C = %{x}<br>", y_title, " = %{y:.3g}<extra></extra>"
-        )
-      )
-    }
+  if (length(pols) == 0) {
+    fig <- add_annotations(fig,
+      text = "Sem dados", x = 0.5, y = 0.5, xref = "paper", yref = "paper",
+      showarrow = FALSE, font = list(color = AXIS, size = 14))
   }
 
   layout(fig,
-    title  = list(text = y_title, font = list(color = TEXT_COL, size = 12)),
-    xaxis  = list(title = "Capacidade C", color = AXIS_COL,
-                  gridcolor = GRID_COL, tickvals = seq(10, 100, 10)),
-    yaxis  = list(title = "", color = AXIS_COL, gridcolor = GRID_COL),
-    plot_bgcolor  = PANEL_BG,
-    paper_bgcolor = DARK_BG,
-    font   = list(color = TEXT_COL, size = 10),
-    legend = list(font = list(color = TEXT_COL, size = 9),
-                  bgcolor = DARK_BG, tracegroupgap = 2),
-    margin = list(l = 55, r = 10, t = 40, b = 45),
+    title  = list(text = y_title, font = list(color = TEXT, size = 11)),
+    xaxis  = list(title = "C", color = AXIS, gridcolor = GRID,
+                  tickvals = seq(10, 100, 10), zeroline = FALSE),
+    yaxis  = list(title = "", color = AXIS, gridcolor = GRID, zeroline = FALSE),
+    plot_bgcolor  = PANEL, paper_bgcolor = BG,
+    font   = list(color = TEXT, size = 10),
+    legend = list(font = list(color = TEXT, size = 9), bgcolor = BG,
+                  orientation = "v"),
+    margin = list(l = 55, r = 10, t = 38, b = 42),
     hovermode = "x unified"
-  )
+  ) |> config(displayModeBar = FALSE)
 }
 
-tab_plots <- function(sc) {
-  d <- filter(df, scenario == sc)
-  list(
+# ── Retorna tagList com layout 2+2+1 para (sc, k) ───────────────────────────
+show_plots <- function(sc, k) {
+  d <- filter(df, scenario == sc, K == k)
+  p <- list(
     h1     = make_ply(d, "mean_h1",          "AoI médio h₁ (slots)"),
     risk   = make_ply(d, "mean_risk",        "Risco médio total"),
     frames = make_ply(d, "frames_per_drone", "Frames entregues / drone"),
     util   = make_ply(d, "channel_util",     "Util. canal vídeo"),
     h2     = make_ply(d, "mean_h2",          "AoI médio h₂ (slots)")
   )
+  row <- function(...) div(style = "display:flex; gap:8px; margin-bottom:8px;", ...)
+  col <- function(w) div(style = paste0("flex:", w, "; min-width:0;"))
+
+  tagList(
+    row(
+      tagAppendChildren(col(1), p$h1),
+      tagAppendChildren(col(1), p$risk)
+    ),
+    row(
+      tagAppendChildren(col(1), p$frames),
+      tagAppendChildren(col(1), p$util)
+    ),
+    div(style = "margin-bottom:8px;", p$h2)
+  )
+}
+
+# ── Sub-tabs K para um cenário ───────────────────────────────────────────────
+k_tabs <- function(sc) {
+  k_vals <- sort(unique(df$K))
+  panels <- lapply(k_vals, function(k) {
+    nav_panel(paste0("K = ", k), show_plots(sc, k))
+  })
+  do.call(navset_tab, c(panels, list(id = paste0("ktab_", sc))))
 }
 ```
 
-> **`r nrow(df)` runs** carregados · K ∈ {`r paste(sort(unique(df$K)), collapse = ", ")`} · C `r min(df$C)`–`r max(df$C)` · `r length(unique(df$policy))` políticas.
-> Estilos de linha: **—** K=1 · **- -** K=2 · **···** K=4 · **-·-** K=8.
-> Clique na legenda para ocultar/exibir políticas.
+> **`r nrow(df)` runs** carregados · K ∈ {`r paste(sort(unique(df$K)), collapse=", ")`} · C `r min(df$C)`–`r max(df$C)` · `r length(unique(df$policy))` políticas · clique na legenda para filtrar.
 
 ::: {.panel-tabset}
 
 ## A\* · 1 rota
 
-```{r astar1}
-p <- tab_plots("1r_astar")
-```
-
-:::: {.columns}
-::: {.column width="50%"}
 ```{r}
-p$h1
-```
-:::
-::: {.column width="50%"}
-```{r}
-p$risk
-```
-:::
-::::
-
-:::: {.columns}
-::: {.column width="50%"}
-```{r}
-p$frames
-```
-:::
-::: {.column width="50%"}
-```{r}
-p$util
-```
-:::
-::::
-
-```{r}
-p$h2
+k_tabs("1r_astar")
 ```
 
 ## A\* · 2 rotas
 
-```{r astar2}
-p <- tab_plots("2r_astar")
-```
-
-:::: {.columns}
-::: {.column width="50%"}
 ```{r}
-p$h1
-```
-:::
-::: {.column width="50%"}
-```{r}
-p$risk
-```
-:::
-::::
-
-:::: {.columns}
-::: {.column width="50%"}
-```{r}
-p$frames
-```
-:::
-::: {.column width="50%"}
-```{r}
-p$util
-```
-:::
-::::
-
-```{r}
-p$h2
+k_tabs("2r_astar")
 ```
 
 ## Static · 1 rota
 
-```{r static1}
-p <- tab_plots("1r_static")
-```
-
-:::: {.columns}
-::: {.column width="50%"}
 ```{r}
-p$h1
-```
-:::
-::: {.column width="50%"}
-```{r}
-p$risk
-```
-:::
-::::
-
-:::: {.columns}
-::: {.column width="50%"}
-```{r}
-p$frames
-```
-:::
-::: {.column width="50%"}
-```{r}
-p$util
-```
-:::
-::::
-
-```{r}
-p$h2
+k_tabs("1r_static")
 ```
 
 ## Static · 2 rotas
 
-```{r static2}
-p <- tab_plots("2r_static")
-```
-
-:::: {.columns}
-::: {.column width="50%"}
 ```{r}
-p$h1
-```
-:::
-::: {.column width="50%"}
-```{r}
-p$risk
-```
-:::
-::::
-
-:::: {.columns}
-::: {.column width="50%"}
-```{r}
-p$frames
-```
-:::
-::: {.column width="50%"}
-```{r}
-p$util
-```
-:::
-::::
-
-```{r}
-p$h2
+k_tabs("2r_static")
 ```
 
 :::
