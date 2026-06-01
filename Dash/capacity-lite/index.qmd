@@ -82,9 +82,11 @@ make_ply <- function(d, y_col, y_title) {
   ) |> config(displayModeBar = FALSE)
 }
 
-# ── Retorna tagList com layout 2+2+1 para (sc, k) ───────────────────────────
-show_plots <- function(sc, k = NULL) {
-  d <- if (is.null(k)) filter(df, scenario == sc) else filter(df, scenario == sc, K == k)
+# ── Retorna tagList com layout 2+2+1 (sc e/ou k = NULL → sem filtro) ────────
+show_plots <- function(sc = NULL, k = NULL) {
+  d <- df
+  if (!is.null(sc)) d <- filter(d, scenario == sc)
+  if (!is.null(k))  d <- filter(d, K == k)
   p <- list(
     h1     = make_ply(d, "mean_h1",          "AoI médio h₁ (slots)"),
     risk   = make_ply(d, "mean_risk",        "Risco médio total"),
@@ -108,13 +110,12 @@ show_plots <- function(sc, k = NULL) {
   )
 }
 
-# ── Sub-tabs K para um cenário (Geral + K individuais) ──────────────────────
+# ── Sub-tabs K para um cenário (apenas K individuais) ────────────────────────
 k_tabs <- function(sc) {
   k_vals  <- sort(unique(df$K))
-  k_panels <- lapply(k_vals, function(k) {
+  panels  <- lapply(k_vals, function(k) {
     nav_panel(paste0("K = ", k), show_plots(sc, k))
   })
-  panels <- c(list(nav_panel("Geral", show_plots(sc))), k_panels)
   do.call(navset_tab, c(panels, list(id = paste0("ktab_", sc))))
 }
 ```
@@ -122,6 +123,12 @@ k_tabs <- function(sc) {
 > **`r nrow(df)` runs** carregados · K ∈ {`r paste(sort(unique(df$K)), collapse=", ")`} · C `r min(df$C)`–`r max(df$C)` · `r length(unique(df$policy))` políticas · clique na legenda para filtrar.
 
 ::: {.panel-tabset}
+
+## Geral
+
+```{r}
+show_plots()
+```
 
 ## A\* · 1 rota
 
