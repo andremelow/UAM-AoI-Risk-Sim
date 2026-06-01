@@ -146,6 +146,39 @@ load_dir <- function(dir_path) {
                         "w_unc","w_map","w_vid","sim_slots","corridor_capacity"),names(mp))
     runs <- left_join(runs,mp[,keep],by="run_id")
   }
+  # ── Join routing_mode / num_routes from sweep_routing_summary files ──────
+  sw_dir <- file.path(dir_path,"sweep_routing")
+  if (dir.exists(sw_dir)) {
+    sw_files <- list.files(sw_dir, pattern="^sweep_routing_summary\\.csv$",
+                           full.names=TRUE, recursive=TRUE)
+    sw_files <- sw_files[!str_detect(sw_files,"sweep_routing_summary_all")]
+    if (length(sw_files)>0) {
+      sw_all <- bind_rows(compact(map(sw_files, function(f) {
+        km  <- str_extract(f,"(?<=/K)(\\d+)/")
+        d   <- sr(f); if(is.null(d)||nrow(d)==0) return(NULL)
+        d$K <- if(!is.na(km)) as.integer(str_extract(km,"\\d+")) else NA_integer_
+        d
+      })))
+      need <- c("K","num_drones","policy","routing_mode","num_routes")
+      if (all(need%in%names(sw_all))) {
+        sw_idx <- sw_all %>%
+          rename(N=num_drones) %>%
+          mutate(N=as.integer(N), K=as.integer(K)) %>%
+          group_by(K,N,policy) %>%
+          mutate(pos=row_number()) %>%
+          ungroup() %>%
+          select(K,N,policy,pos,routing_mode,num_routes)
+        runs <- runs %>%
+          mutate(ts_=str_extract(run_id,"\\d{8}_\\d{6}$")) %>%
+          group_by(K,N,policy) %>%
+          arrange(ts_,.by_group=TRUE) %>%
+          mutate(pos=row_number()) %>%
+          ungroup() %>%
+          left_join(sw_idx,by=c("K","N","policy","pos")) %>%
+          select(-ts_,-pos)
+      }
+    }
+  }
   list(runs=runs,drones=drones,series=NULL,cdf=NULL,manifest=manifest,is_agg=FALSE)
 }
 
