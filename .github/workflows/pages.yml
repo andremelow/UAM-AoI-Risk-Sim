@@ -33,7 +33,7 @@ jobs:
       - name: Install R packages
         run: |
           Rscript -e "install.packages(
-            c('ggplot2', 'plotly', 'dplyr', 'htmlwidgets', 'bslib'),
+            c('ggplot2', 'plotly', 'dplyr', 'htmlwidgets', 'bslib', 'shiny'),
             repos = 'https://packagemanager.posit.co/cran/__linux__/noble/latest'
           )"
 
