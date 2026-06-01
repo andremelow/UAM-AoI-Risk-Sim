@@ -49,11 +49,7 @@ jobs:
         with:
           version: '1.6.42'
 
-      - name: Install Shinylive extension
-        run: |
-          cd Dash/capacity-lite
-          quarto add quarto-ext/shinylive --no-prompt
-
+      # shinylive extension está em _extensions/ — já commitada, sem download em CI.
       # capacity_summary.csv é gerado localmente via make_data.R e comitado.
       # Para regen: Rscript Dash/capacity-lite/make_data.R && git add ... && git push
 
