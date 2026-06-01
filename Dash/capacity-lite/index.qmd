@@ -122,6 +122,129 @@ k_tabs <- function(sc) {
 
 > **`r nrow(df)` runs** carregados · K ∈ {`r paste(sort(unique(df$K)), collapse=", ")`} · C `r min(df$C)`–`r max(df$C)` · `r length(unique(df$policy))` políticas · clique na legenda para filtrar.
 
+```{r supr-compute, include=FALSE}
+QOS_TARGET  <- 0.85
+DASH_K      <- c("1"="solid","2"="dash","4"="dot","8"="dashdot")
+pols_all    <- intersect(names(POL_COLORS), unique(df$policy))
+k_all       <- sort(unique(df$K))
+k_max_avail <- max(df$K)
+
+# Supressão média (todas as rotas) por C, K, política
+df_s <- df |>
+  mutate(supr = 1 - channel_util) |>
+  group_by(C, K, policy) |>
+  summarise(supr = mean(supr, na.rm=TRUE), .groups="drop")
+
+p_supr <- plot_ly()
+for (pol in pols_all) {
+  for (k in k_all) {
+    d <- filter(df_s, policy==pol, K==k)
+    if (!nrow(d)) next
+    p_supr <- add_trace(p_supr,
+      data=d, x=~C, y=~supr,
+      type="scatter", mode="lines+markers",
+      name=pol, legendgroup=pol, showlegend=(k==k_all[1]),
+      line=list(color=POL_COLORS[pol], dash=DASH_K[as.character(k)], width=2),
+      marker=list(color=POL_COLORS[pol], size=4),
+      hovertemplate=paste0("<b>",pol,"</b> K=",k,
+        "<br>C=%{x}<br>Supressão=%{y:.1%}<extra></extra>")
+    )
+  }
+}
+p_supr <- layout(p_supr,
+  title=list(text="Taxa de Supressão de Canal (média das 4 rotas)",
+             font=list(color=TEXT,size=12)),
+  xaxis=list(title="Capacidade C", color=AXIS, gridcolor=GRID,
+             tickvals=seq(10,100,10), zeroline=FALSE),
+  yaxis=list(title="Supressão", color=AXIS, gridcolor=GRID,
+             tickformat=".0%", zeroline=FALSE),
+  shapes=list(
+    list(type="line",x0=10,x1=100,y0=1-QOS_TARGET,y1=1-QOS_TARGET,
+         line=list(color="#ff6b6b",dash="dash",width=1.5)),
+    list(type="line",x0=10,x1=100,y0=0.10,y1=0.10,
+         line=list(color="#ffa94d",dash="dot",width=1.2))
+  ),
+  annotations=list(
+    list(x=12,y=1-QOS_TARGET+0.013,showarrow=FALSE,
+         text=paste0("QoS target (",round((1-QOS_TARGET)*100),"%)"),
+         font=list(color="#ff6b6b",size=9)),
+    list(x=12,y=0.115,showarrow=FALSE,
+         text="10% alerta",font=list(color="#ffa94d",size=9))
+  ),
+  plot_bgcolor=PANEL, paper_bgcolor=BG,
+  font=list(color=TEXT,size=10),
+  legend=list(font=list(color=TEXT,size=9),bgcolor=BG),
+  margin=list(l=65,r=10,t=45,b=45), hovermode="x unified"
+) |> config(displayModeBar=FALSE)
+
+# K mínimo necessário para QoS target vs C
+k_needed <- df |>
+  group_by(C, policy, scenario) |>
+  summarise(
+    k_min = { ok <- K[channel_util >= QOS_TARGET]
+              if (length(ok)>0) min(ok) else NA_real_ },
+    .groups="drop"
+  ) |>
+  group_by(C, policy) |>
+  summarise(k_min=mean(k_min, na.rm=TRUE), .groups="drop")
+
+p_kmin <- plot_ly()
+for (pol in pols_all) {
+  d <- filter(k_needed, policy==pol)
+  if (!nrow(d)) next
+  p_kmin <- add_trace(p_kmin,
+    data=d, x=~C, y=~k_min,
+    type="scatter", mode="lines+markers", name=pol,
+    line=list(color=POL_COLORS[pol],width=2),
+    marker=list(color=POL_COLORS[pol],size=5),
+    hovertemplate=paste0("<b>",pol,"</b><br>C=%{x}<br>K mín=%{y:.1f}<extra></extra>")
+  )
+}
+p_kmin <- layout(p_kmin,
+  title=list(text=sprintf("K mínimo para canal ≥ %.0f%% (média 4 rotas)",QOS_TARGET*100),
+             font=list(color=TEXT,size=12)),
+  xaxis=list(title="Capacidade C",color=AXIS,gridcolor=GRID,
+             tickvals=seq(10,100,10),zeroline=FALSE),
+  yaxis=list(title="K necessário",color=AXIS,gridcolor=GRID,
+             zeroline=FALSE,tickvals=k_all,ticktext=paste0("K=",k_all)),
+  shapes=list(list(type="line",x0=10,x1=100,
+    y0=k_max_avail,y1=k_max_avail,
+    line=list(color="#51cf66",dash="dash",width=1.5))),
+  annotations=list(list(x=14,y=k_max_avail+0.15,showarrow=FALSE,
+    text=paste0("K disponível = ",k_max_avail),
+    font=list(color="#51cf66",size=9))),
+  plot_bgcolor=PANEL, paper_bgcolor=BG,
+  font=list(color=TEXT,size=10),
+  legend=list(font=list(color=TEXT,size=9),bgcolor=BG),
+  margin=list(l=65,r=10,t=45,b=45)
+) |> config(displayModeBar=FALSE)
+
+# Heatmap K × C → utilização média (todas políticas e rotas)
+hm <- df |>
+  group_by(K,C) |>
+  summarise(util=mean(channel_util,na.rm=TRUE), .groups="drop")
+
+p_hmap <- plot_ly(hm,
+  x=~C, y=~factor(K,levels=k_all), z=~util,
+  type="heatmap",
+  colorscale=list(c(0,"#c0392b"),c(QOS_TARGET,"#f39c12"),c(1,"#1D9E75")),
+  zmin=0, zmax=1,
+  hovertemplate="K=%{y}  C=%{x}<br>Util=%{z:.1%}<extra></extra>",
+  colorbar=list(title=list(text="Util.<br>canal",font=list(color=TEXT)),
+                tickformat=".0%",font=list(color=TEXT),
+                bgcolor=BG,bordercolor=GRID)
+) |>
+  layout(
+    title=list(text="Mapa K × C: utilização do canal (média políticas e rotas)",
+               font=list(color=TEXT,size=12)),
+    xaxis=list(title="Capacidade C",color=AXIS,tickvals=seq(10,100,10)),
+    yaxis=list(title="K (slots/época)",color=AXIS),
+    plot_bgcolor=PANEL, paper_bgcolor=BG,
+    font=list(color=TEXT,size=10),
+    margin=list(l=65,r=10,t=45,b=45)
+  ) |> config(displayModeBar=FALSE)
+```
+
 ::: {.panel-tabset}
 
 ## Geral
@@ -129,6 +252,29 @@ k_tabs <- function(sc) {
 ```{r}
 show_plots()
 ```
+
+## Demanda Suprimida
+
+> **QoS target:** utilização do canal ≥ `r sprintf("%.0f%%", QOS_TARGET*100)`.
+> Traços: **—** K=1 · **- -** K=2 · **···** K=4 · **-·-** K=8.
+> Região vermelha no heatmap = QoS não atendido.
+
+```{r}
+p_supr
+```
+
+:::: {.columns}
+::: {.column width="50%"}
+```{r}
+p_kmin
+```
+:::
+::: {.column width="50%"}
+```{r}
+p_hmap
+```
+:::
+::::
 
 ## A\* · 1 rota
 
