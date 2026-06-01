@@ -3,34 +3,22 @@ title: "UAM Capacity · Lite Dashboard"
 subtitle: "Corredor Interlagos — sweep K × C × routing × policy"
 format:
   html:
-    resources:
-      - data/
+    theme: darkly
+    page-layout: full
+    self-contained: true
+execute:
+  echo: false
+  warning: false
+  message: false
 ---
 
-```{shinylive-r}
-#| standalone: true
-#| viewerHeight: 780
-
-# ── Dependências ─────────────────────────────────────────────────────────────
-library(shiny)
-library(ggplot2)
+```{r setup, include=FALSE}
 library(dplyr)
+library(ggplot2)
+library(plotly)
 
-# ── Dados (servidos estaticamente junto ao HTML) ──────────────────────────────
-df <- tryCatch({
-  tmp <- tempfile(fileext = ".csv")
-  download.file("data/capacity_summary.csv", tmp, quiet = TRUE)
-  read.csv(tmp, stringsAsFactors = FALSE)
-}, error = function(e) {
-  message("Aviso: ", conditionMessage(e))
-  data.frame(
-    K=integer(), C=integer(), scenario=character(), policy=character(),
-    mean_h1=double(), mean_h2=double(), mean_risk=double(),
-    frames_per_drone=double(), channel_util=double()
-  )
-})
+df <- read.csv("data/capacity_summary.csv", stringsAsFactors = FALSE)
 
-# ── Paleta e constantes ───────────────────────────────────────────────────────
 POL_COLORS <- c(
   "round-robin"      = "#378ADD",
   "pf-classic"       = "#D85A30",
@@ -41,177 +29,226 @@ POL_COLORS <- c(
 )
 DARK_BG  <- "#1e1e2e"
 PANEL_BG <- "#13131f"
-GRID_COL <- "#2a2a4a"
 TEXT_COL <- "#cdd6f4"
 AXIS_COL <- "#a6adc8"
+GRID_COL <- "#2a2a4a"
 
-k_vals  <- sort(unique(df$K))
-pol_all <- intersect(names(POL_COLORS), unique(df$policy))
+# Linha tracejada por K para distinguir sem precisar de filtro interativo
+DASH_MAP <- c("1" = "solid", "2" = "dash", "4" = "dot", "8" = "dashdot")
 
-# ── Tema ggplot2 ──────────────────────────────────────────────────────────────
-theme_dark_uam <- function() {
-  theme_minimal(base_size = 10) +
-  theme(
-    plot.background  = element_rect(fill = DARK_BG,  color = NA),
-    panel.background = element_rect(fill = PANEL_BG, color = NA),
-    panel.grid.major = element_line(color = GRID_COL, linewidth = 0.4),
-    panel.grid.minor = element_blank(),
-    text             = element_text(color = TEXT_COL),
-    axis.text        = element_text(color = AXIS_COL, size = 8),
-    axis.title       = element_text(color = TEXT_COL, size = 9),
-    plot.title       = element_text(color = TEXT_COL, size = 10, face = "bold"),
-    legend.background= element_rect(fill = DARK_BG, color = NA),
-    legend.key       = element_blank(),
-    legend.text      = element_text(size = 8, color = TEXT_COL),
-    legend.title     = element_blank(),
-    plot.margin      = margin(6, 8, 6, 8)
-  )
-}
-
-# ── Gráfico: C × métrica, uma linha por política ──────────────────────────────
-make_plot <- function(d, y_col, y_label, colors) {
+make_ply <- function(d, y_col, y_title) {
   if (nrow(d) == 0) {
-    return(
-      ggplot() +
-        annotate("text", x = .5, y = .5, label = "Sem dados",
-                 color = AXIS_COL, size = 4) +
-        theme_void() +
-        theme(plot.background = element_rect(fill = DARK_BG, color = NA))
-    )
+    return(plot_ly() |>
+      layout(title = list(text = y_title, font = list(color = TEXT_COL)),
+             paper_bgcolor = DARK_BG, plot_bgcolor = PANEL_BG))
   }
+
   agg <- d |>
-    group_by(C, policy) |>
+    group_by(C, K, policy) |>
     summarise(y = mean(.data[[y_col]], na.rm = TRUE), .groups = "drop")
 
-  ggplot(agg, aes(x = C, y = y, color = policy, group = policy)) +
-    geom_line(linewidth = 0.85) +
-    geom_point(size = 2.2, shape = 16) +
-    scale_color_manual(values = colors, drop = FALSE) +
-    scale_x_continuous(breaks = seq(10, 100, by = 10)) +
-    labs(x = "Capacidade C", y = y_label, title = y_label) +
-    theme_dark_uam()
-}
+  pols_present <- intersect(names(POL_COLORS), unique(agg$policy))
+  ks_present   <- sort(unique(agg$K))
 
-# ── Módulo: sidebar de filtros + 5 gráficos ───────────────────────────────────
-tab_ui <- function(id) {
-  ns <- NS(id)
-  fluidRow(
-    column(2,
-      style = paste0("background:", DARK_BG, "; padding:12px; border-radius:6px;"),
-      tags$h6("K (drones/slot)", style = paste0("color:", TEXT_COL, ";")),
-      checkboxGroupInput(ns("k_sel"), NULL,
-        choices  = as.character(k_vals),
-        selected = as.character(k_vals)
-      ),
-      tags$hr(style = paste0("border-color:", GRID_COL, ";")),
-      tags$h6("Políticas", style = paste0("color:", TEXT_COL, ";")),
-      checkboxGroupInput(ns("pol_sel"), NULL,
-        choices  = pol_all,
-        selected = pol_all
-      ),
-      tags$br(),
-      actionButton(ns("sel_all"),  "Selec. todas",
-        class = "btn-sm btn-outline-secondary", width = "100%"),
-      tags$br(), tags$br(),
-      actionButton(ns("sel_none"), "Limpar",
-        class = "btn-sm btn-outline-secondary", width = "100%")
-    ),
-    column(10,
-      fluidRow(
-        column(6, plotOutput(ns("p_h1"),     height = "240px")),
-        column(6, plotOutput(ns("p_risk"),   height = "240px"))
-      ),
-      fluidRow(
-        column(6, plotOutput(ns("p_frames"), height = "240px")),
-        column(6, plotOutput(ns("p_util"),   height = "240px"))
-      ),
-      fluidRow(
-        column(12, plotOutput(ns("p_h2"),    height = "240px"))
-      )
-    )
-  )
-}
-
-tab_server <- function(id, sc_id) {
-  moduleServer(id, function(input, output, session) {
-
-    observeEvent(input$sel_all, {
-      updateCheckboxGroupInput(session, "pol_sel", selected = pol_all)
-    })
-    observeEvent(input$sel_none, {
-      updateCheckboxGroupInput(session, "pol_sel", selected = character(0))
-    })
-
-    filt <- reactive({
-      req(length(input$k_sel) > 0)
-      df |>
-        filter(
-          scenario == sc_id,
-          K        %in% as.integer(input$k_sel),
-          policy   %in% input$pol_sel
+  fig <- plot_ly()
+  for (pol in pols_present) {
+    for (k in ks_present) {
+      sub <- filter(agg, policy == pol, K == k)
+      if (nrow(sub) == 0) next
+      show_leg <- k == ks_present[1]    # legenda só na primeira linha de cada pol
+      fig <- add_trace(fig,
+        data = sub, x = ~C, y = ~y,
+        type = "scatter", mode = "lines+markers",
+        name = pol,
+        legendgroup = pol,
+        showlegend = show_leg,
+        line   = list(color = POL_COLORS[pol],
+                      dash  = DASH_MAP[as.character(k)],
+                      width = 1.8),
+        marker = list(color = POL_COLORS[pol], size = 4),
+        hovertemplate = paste0(
+          "<b>", pol, "</b>  K=", k,
+          "<br>C = %{x}<br>", y_title, " = %{y:.3g}<extra></extra>"
         )
-    })
+      )
+    }
+  }
 
-    colors_active <- reactive({
-      POL_COLORS[names(POL_COLORS) %in% input$pol_sel]
-    })
-
-    output$p_h1     <- renderPlot({
-      make_plot(filt(), "mean_h1",          "AoI médio h₁ (slots)",       colors_active())
-    }, bg = DARK_BG)
-    output$p_risk   <- renderPlot({
-      make_plot(filt(), "mean_risk",        "Risco médio total",                colors_active())
-    }, bg = DARK_BG)
-    output$p_frames <- renderPlot({
-      make_plot(filt(), "frames_per_drone", "Frames entregues por drone",       colors_active())
-    }, bg = DARK_BG)
-    output$p_util   <- renderPlot({
-      make_plot(filt(), "channel_util",     "Utilização canal vídeo [0–1]", colors_active())
-    }, bg = DARK_BG)
-    output$p_h2     <- renderPlot({
-      make_plot(filt(), "mean_h2",          "AoI médio h₂ (slots)",       colors_active())
-    }, bg = DARK_BG)
-  })
-}
-
-# ── UI global ─────────────────────────────────────────────────────────────────
-css_extra <- paste0("
-  body { background:", DARK_BG, "; }
-  .nav-tabs .nav-link        { color:", AXIS_COL, "; }
-  .nav-tabs .nav-link.active { color:", TEXT_COL, "; background:", PANEL_BG, "; }
-  .shiny-input-container     { color:", TEXT_COL, "; }
-  h6 { margin-bottom:5px; font-size:0.75rem; letter-spacing:.06em;
-       text-transform:uppercase; font-weight:600; }
-  label { color:", AXIS_COL, " !important; font-size:0.82rem; }
-")
-
-ui <- fluidPage(
-  theme = bslib::bs_theme(bootswatch = "darkly"),
-  tags$head(tags$style(HTML(css_extra))),
-  tags$div(style = "padding: 10px 8px 0 8px;",
-    tags$h4("⚿ UAM Capacity · Lite Dashboard",
-            style = paste0("color:", TEXT_COL, "; margin-bottom:2px;")),
-    tags$p(
-      style = paste0("color:", AXIS_COL, "; font-size:0.82rem; margin-bottom:8px;"),
-      paste0("Corredor 2 km · steady 20 min · ",
-             nrow(df), " runs carregados")
-    )
-  ),
-  tabsetPanel(id = "main_tabs",
-    tabPanel("A* · 1 rota",       tab_ui("astar1")),
-    tabPanel("A* · 2 rotas",      tab_ui("astar2")),
-    tabPanel("Static · 1 rota",   tab_ui("static1")),
-    tabPanel("Static · 2 rotas",  tab_ui("static2"))
+  layout(fig,
+    title  = list(text = y_title, font = list(color = TEXT_COL, size = 12)),
+    xaxis  = list(title = "Capacidade C", color = AXIS_COL,
+                  gridcolor = GRID_COL, tickvals = seq(10, 100, 10)),
+    yaxis  = list(title = "", color = AXIS_COL, gridcolor = GRID_COL),
+    plot_bgcolor  = PANEL_BG,
+    paper_bgcolor = DARK_BG,
+    font   = list(color = TEXT_COL, size = 10),
+    legend = list(font = list(color = TEXT_COL, size = 9),
+                  bgcolor = DARK_BG, tracegroupgap = 2),
+    margin = list(l = 55, r = 10, t = 40, b = 45),
+    hovermode = "x unified"
   )
-)
-
-# ── Server global ─────────────────────────────────────────────────────────────
-server <- function(input, output, session) {
-  tab_server("astar1",  "1r_astar")
-  tab_server("astar2",  "2r_astar")
-  tab_server("static1", "1r_static")
-  tab_server("static2", "2r_static")
 }
 
-shinyApp(ui, server)
+tab_plots <- function(sc) {
+  d <- filter(df, scenario == sc)
+  list(
+    h1     = make_ply(d, "mean_h1",          "AoI médio h₁ (slots)"),
+    risk   = make_ply(d, "mean_risk",        "Risco médio total"),
+    frames = make_ply(d, "frames_per_drone", "Frames entregues / drone"),
+    util   = make_ply(d, "channel_util",     "Util. canal vídeo"),
+    h2     = make_ply(d, "mean_h2",          "AoI médio h₂ (slots)")
+  )
+}
 ```
+
+> **`r nrow(df)` runs** carregados · K ∈ {`r paste(sort(unique(df$K)), collapse = ", ")`} · C `r min(df$C)`–`r max(df$C)` · `r length(unique(df$policy))` políticas.
+> Estilos de linha: **—** K=1 · **- -** K=2 · **···** K=4 · **-·-** K=8.
+> Clique na legenda para ocultar/exibir políticas.
+
+::: {.panel-tabset}
+
+## A\* · 1 rota
+
+```{r astar1}
+p <- tab_plots("1r_astar")
+```
+
+:::: {.columns}
+::: {.column width="50%"}
+```{r}
+p$h1
+```
+:::
+::: {.column width="50%"}
+```{r}
+p$risk
+```
+:::
+::::
+
+:::: {.columns}
+::: {.column width="50%"}
+```{r}
+p$frames
+```
+:::
+::: {.column width="50%"}
+```{r}
+p$util
+```
+:::
+::::
+
+```{r}
+p$h2
+```
+
+## A\* · 2 rotas
+
+```{r astar2}
+p <- tab_plots("2r_astar")
+```
+
+:::: {.columns}
+::: {.column width="50%"}
+```{r}
+p$h1
+```
+:::
+::: {.column width="50%"}
+```{r}
+p$risk
+```
+:::
+::::
+
+:::: {.columns}
+::: {.column width="50%"}
+```{r}
+p$frames
+```
+:::
+::: {.column width="50%"}
+```{r}
+p$util
+```
+:::
+::::
+
+```{r}
+p$h2
+```
+
+## Static · 1 rota
+
+```{r static1}
+p <- tab_plots("1r_static")
+```
+
+:::: {.columns}
+::: {.column width="50%"}
+```{r}
+p$h1
+```
+:::
+::: {.column width="50%"}
+```{r}
+p$risk
+```
+:::
+::::
+
+:::: {.columns}
+::: {.column width="50%"}
+```{r}
+p$frames
+```
+:::
+::: {.column width="50%"}
+```{r}
+p$util
+```
+:::
+::::
+
+```{r}
+p$h2
+```
+
+## Static · 2 rotas
+
+```{r static2}
+p <- tab_plots("2r_static")
+```
+
+:::: {.columns}
+::: {.column width="50%"}
+```{r}
+p$h1
+```
+:::
+::: {.column width="50%"}
+```{r}
+p$risk
+```
+:::
+::::
+
+:::: {.columns}
+::: {.column width="50%"}
+```{r}
+p$frames
+```
+:::
+::: {.column width="50%"}
+```{r}
+p$util
+```
+:::
+::::
+
+```{r}
+p$h2
+```
+
+:::
