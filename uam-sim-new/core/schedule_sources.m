@@ -13,6 +13,7 @@ function [txSlots, state] = schedule_sources(state, slot, cfg)
 %    'round-robin-aware'   — RR but skips drones below SNR threshold (still naive about AoI/risk)
 %    'pf-classic'          — source-level PF: score = r_u / T_avg_source
 %    'aoi-pure'            — Max-Weight AoI: score = h_source
+%    'aoi-normalized'      — Normalised AoI: score = h_source / L_source  (slots/frame)
 %    'risk-aware'          — Risk x AoI heuristic (legacy)
 %    'max-weight'          — Doc Sec. 4.5: full Max-Weight with W_{u,s}, W_{u,v}^start
 %    'max-weight-drift'    — Analysis Sec. 2: quadratic-drift Max-Weight (beta_s/beta_v/V)
@@ -97,6 +98,11 @@ switch cfg.schedulingPolicy
         txSlots = [txSlots, new_slots];
         state = mark_vid_starts(state, new_slots);
 
+    case 'aoi-normalized'
+        new_slots = policy_aoi_normalized(eligible, K_free, state, slot, cfg);
+        txSlots = [txSlots, new_slots];
+        state = mark_vid_starts(state, new_slots);
+
     case 'risk-aware'
         new_slots = policy_risk_aware(eligible, K_free, state, slot, cfg);
         txSlots = [txSlots, new_slots];
@@ -119,7 +125,7 @@ switch cfg.schedulingPolicy
 
     otherwise
         error(['schedule_sources: unknown policy "%s".\n' ...
-               'Valid: round-robin, round-robin-aware, pf-classic, aoi-pure, risk-aware, max-weight, max-weight-drift, best-cqi'], ...
+               'Valid: round-robin, round-robin-aware, pf-classic, aoi-pure, aoi-normalized, risk-aware, max-weight, max-weight-drift, best-cqi'], ...
               cfg.schedulingPolicy);
 end
 end
