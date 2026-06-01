@@ -10,9 +10,9 @@ function experiment_capacity(varargin)
 %  Sweep axes:
 %    K  — dronesPerSlot ∈ [1 2 4 8]              (paralelizado via parfor)
 %    C  — corridorCapacity ∈ [5 10 20 40 60 80]
-%    Policy — round-robin | aoi-pure | risk-aware | max-weight-drift | pf-classic
+%    Policy — round-robin | aoi-pure | aoi-normalized | risk-aware | max-weight-drift | pf-classic
 %
-%  Total: 4K × 6C × 5 policies = 120 runs.
+%  Total: 4K × 6C × 6 policies = 144 runs.
 %  Corredor: 2 km East (−1000 a +1000 m), speed = 5 m/s.
 %
 %  Usage:
@@ -55,7 +55,7 @@ else
     capacity_values = cap_override;
 end
 K_values  = [1, 2, 4, 8];
-policies  = {'round-robin', 'aoi-pure', 'risk-aware', 'max-weight-drift', 'pf-classic'};
+policies  = {'round-robin', 'aoi-pure', 'aoi-normalized', 'risk-aware', 'max-weight-drift', 'pf-classic'};
 T_STEADY  = 1200;  % segundos em regime estável (20 min)
 
 % ── Output root ───────────────────────────────────────────────────────
