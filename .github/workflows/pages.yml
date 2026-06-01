@@ -41,8 +41,10 @@ jobs:
 
       - name: Install R dependencies
         run: |
-          Rscript -e "install.packages(c('ggplot2','shiny','bslib','dplyr'),
-                        repos='https://cloud.r-project.org')"
+          Rscript -e "install.packages(
+            c('shinylive','ggplot2','shiny','bslib','dplyr'),
+            repos = 'https://packagemanager.posit.co/cran/__linux__/noble/latest'
+          )"
 
       - name: Setup Quarto
         uses: quarto-dev/quarto-actions/setup@v2
