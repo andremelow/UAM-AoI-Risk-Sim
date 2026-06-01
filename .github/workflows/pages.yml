@@ -1,0 +1,77 @@
+name: Deploy Capacity Dashboard → GitHub Pages
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'Dash/capacity-lite/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:   # permite trigger manual
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup R 4.3
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3'
+          use-public-rspm: true
+
+      - name: Cache R packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.R_LIBS_USER }}
+          key: ${{ runner.os }}-r-${{ hashFiles('**/DESCRIPTION') }}
+          restore-keys: ${{ runner.os }}-r-
+
+      - name: Install R dependencies
+        run: |
+          Rscript -e "install.packages(c('ggplot2','shiny','bslib','dplyr'),
+                        repos='https://cloud.r-project.org')"
+
+      - name: Setup Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+        with:
+          version: '1.6.42'
+
+      - name: Install Shinylive extension
+        run: |
+          cd Dash/capacity-lite
+          quarto add quarto-ext/shinylive --no-prompt
+
+      # capacity_summary.csv é gerado localmente via make_data.R e comitado.
+      # Para regen: Rscript Dash/capacity-lite/make_data.R && git add ... && git push
+
+      - name: Render dashboard
+        run: |
+          cd Dash/capacity-lite
+          quarto render
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

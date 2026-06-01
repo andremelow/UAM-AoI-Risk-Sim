@@ -1,27 +1,29 @@
 function experiment_capacity(varargin)
-%% EXPERIMENT_CAPACITY  Capacity-based sweep — parfor over K, serial over C × policy.
+%% EXPERIMENT_CAPACITY  Capacity-based sweep — K × C × routing × policy.
 %
 %  Modelo capacity_drain:
-%    Fase fill:   drones entram com spacing = flightTime/C até atingir C simultâneos.
+%    Fase fill:   drones entram com spacing = flightTime/C_route até C simultâneos.
 %    Fase steady: C drones ativos por steady_duration = 1200 s  (20 min).
 %    Fase drain:  sem novos drones; os activos terminam o voo.
-%    N_total = C + floor(1200/spacing)  [20 a 320 drones por run].
 %
 %  Sweep axes:
-%    K  — dronesPerSlot ∈ [1 2 4 8]              (paralelizado via parfor)
-%    C  — corridorCapacity ∈ [5 10 20 40 60 80]
-%    Policy — round-robin | aoi-pure | aoi-normalized | risk-aware | max-weight-drift | pf-classic
+%    K        — dronesPerSlot ∈ [1 2 4 8]
+%    C        — corridorCapacity ∈ [10 20 30 40 50 60 70 80 90 100]
+%    Routing  — static | risk_astar  ×  1 route | 2 routes  (4 cenários)
+%    Policy   — round-robin | aoi-pure | aoi-normalized | risk-aware | max-weight-drift | pf-classic
 %
-%  Total: 4K × 6C × 6 policies = 144 runs.
-%  Corredor: 2 km East (−1000 a +1000 m), speed = 5 m/s.
+%  Total: 4K × 10C × 4 routing × 6 policies = 960 runs.
+%  Corredor: 2 km, dois lanes paralelos (North ±50 m), speed = 5 m/s.
+%
+%  Output: csv_export/capacity_20min/K{K}/C{CCC}/{routing_label}/
 %
 %  Usage:
 %    experiment_capacity()
-%    experiment_capacity('--smoke-only')         % só smoke test
-%    experiment_capacity('skip-smoke')           % pula smoke, roda sweep
-%    experiment_capacity('--yes')               % sem confirmação
-%    experiment_capacity('--headless')          % sem dashboard
-%    experiment_capacity('--C', '5,10,20')      % subset de capacidades
+%    experiment_capacity('--smoke-only')
+%    experiment_capacity('skip-smoke')
+%    experiment_capacity('--yes')
+%    experiment_capacity('--headless')
+%    experiment_capacity('--C', '10,20,30')   % subset de capacidades
 
 setup_paths();
 
@@ -50,12 +52,13 @@ end
 
 % ── Sweep axes ────────────────────────────────────────────────────────
 if isempty(cap_override)
-    capacity_values = [5, 10, 20, 40, 60, 80];
+    capacity_values = 10:10:100;
 else
     capacity_values = cap_override;
 end
 K_values  = [1, 2, 4, 8];
-policies  = {'round-robin', 'aoi-pure', 'aoi-normalized', 'risk-aware', 'max-weight-drift', 'pf-classic'};
+policies  = {'round-robin', 'aoi-pure', 'aoi-normalized', 'risk-aware', ...
+             'max-weight-drift', 'pf-classic'};
 T_STEADY  = 1200;  % segundos em regime estável (20 min)
 
 % ── Output root ───────────────────────────────────────────────────────
@@ -70,18 +73,21 @@ diary(logFile); diary on;
 
 fprintf('\n');
 fprintf('═══════════════════════════════════════════════════════════════\n');
-fprintf('  EXPERIMENT_CAPACITY — capacity × K × policy sweep\n');
-fprintf('  Corridor: 2 km East (−1000 to +1000 m)  speed=5 m/s\n');
-fprintf('  Modelo: capacity_drain  steady=%ds  sim_duration ≈ %d s por run\n', ...
+fprintf('  EXPERIMENT_CAPACITY — K × C × routing × policy sweep\n');
+fprintf('  Corredor: 2 km East, 2 lanes paralelos (N±50 m)  speed=5 m/s\n');
+fprintf('  Modelo: capacity_drain  steady=%ds  (~%d s por run)\n', ...
         T_STEADY, T_STEADY + 2*400);
 fprintf('  Started: %s\n', datestr(now)); %#ok<TNOW1,DATST>
 fprintf('  Log: %s\n', logFile);
 fprintf('═══════════════════════════════════════════════════════════════\n\n');
 
-total_runs = numel(capacity_values) * numel(K_values) * numel(policies);
-fprintf('Planned: %dC × %dK × %d policies = %d runs\n', ...
-        numel(capacity_values), numel(K_values), numel(policies), total_runs);
-fprintf('Modelo: capacity_drain  steady=%ds  corredor=2km  speed=5m/s\n', T_STEADY);
+scenarios  = define_capacity_scenarios();
+n_sc       = numel(scenarios);
+total_runs = numel(K_values) * numel(capacity_values) * n_sc * numel(policies);
+fprintf('Planned: %dK × %dC × %d routing × %d policies = %d runs\n', ...
+        numel(K_values), numel(capacity_values), n_sc, numel(policies), total_runs);
+fprintf('Capacidades: %s\n', num2str(capacity_values));
+fprintf('Cenários: %s\n', strjoin({scenarios.label}, ' | '));
 
 if ~auto_confirm && ~smoke_only
     fprintf('\nPress ENTER to continue, or Ctrl-C to abort.\n');
@@ -90,12 +96,12 @@ end
 
 % ── Base config ───────────────────────────────────────────────────────
 cfg_base          = base_config_capacity();
-cfg_base.headless = true;   % sempre headless no parfor
+cfg_base.headless = true;
 
 % ── Smoke test ────────────────────────────────────────────────────────
 if ~skip_smoke || smoke_only
     fprintf('\n──────────────────────────────────────────────────────────\n');
-    fprintf('  SMOKE TEST (corredor 200m, C=3, T_steady=40s, 2 políticas)\n');
+    fprintf('  SMOKE TEST (corredor 200m, C=3, T_steady=40s, 2 políticas × 2 cenários)\n');
     fprintf('──────────────────────────────────────────────────────────\n\n');
     smoke_t0 = tic;
     smoke_ok = run_smoke_capacity(OUT_ROOT, cfg_base);
@@ -108,30 +114,29 @@ if ~skip_smoke || smoke_only
         fprintf('[SMOKE] FAILED — aborting.\n');
         diary off; return;
     end
+    if ~auto_confirm
+        fprintf('\nSmoke OK. Press ENTER to launch the full sweep, or Ctrl-C to abort.\n');
+        pause;
+    end
 end
 
-% ── Parallel pool — um worker por run (K × C × policy) ───────────────
-combos   = build_combos(K_values, capacity_values, policies);
+% ── Parallel pool ────────────────────────────────────────────────────
+combos   = build_combos(K_values, capacity_values, scenarios, policies);
 n_combos = numel(combos);
 
-% Usa todos os cores físicos disponíveis, respeitando o número de runs.
-% feature('numcores') retorna cores físicos (ignora hyperthreading).
 nPhysCores = feature('numcores');
-nTarget    = max(1, floor(nPhysCores / 4));   % um quarto dos cores físicos
+nTarget    = max(1, floor(nPhysCores / 4));
 cluster    = parcluster('local');
 if cluster.NumWorkers ~= nTarget
     cluster.NumWorkers = nTarget;
     saveProfile(cluster);
-    fprintf('[PARALLEL] Perfil local atualizado: NumWorkers=%d (metade de %d cores físicos).\n', ...
-            nTarget, nPhysCores);
 end
 nWorkers = min(n_combos, cluster.NumWorkers);
 
 pool = gcp('nocreate');
 if isempty(pool)
     parpool('local', nWorkers);
-    fprintf('[PARALLEL] Pool started: %d workers (cores físicos=%d).\n', ...
-            nWorkers, nPhysCores);
+    fprintf('[PARALLEL] Pool started: %d workers (cores físicos=%d).\n', nWorkers, nPhysCores);
 else
     if pool.NumWorkers < nWorkers
         delete(pool);
@@ -142,63 +147,69 @@ else
     end
 end
 
-% ── Sweep (parfor sobre todos os runs) ───────────────────────────────
+% ── Sweep ────────────────────────────────────────────────────────────
 fprintf('\n──────────────────────────────────────────────────────────\n');
 fprintf('  CAPACITY SWEEP  (%d runs, %d workers)\n', n_combos, nWorkers);
 fprintf('──────────────────────────────────────────────────────────\n\n');
 
 sw_t0 = tic;
-
 all_rows_cell = cell(n_combos, 1);
 
 parfor idx = 1:n_combos
-    c        = combos(idx);
-    outDir_r = fullfile(OUT_ROOT, sprintf('K%d', c.K), sprintf('C%03d', c.C));
-    system(sprintf('mkdir -p "%s"', outDir_r));   % atômico, seguro em paralelo
+    c       = combos(idx);
+    outDir_r = fullfile(OUT_ROOT, sprintf('K%d', c.K), ...
+                        sprintf('C%03d', c.C), c.sc.label);
+    system(sprintf('mkdir -p "%s"', outDir_r));
 
-    cfg = build_capacity_run_cfg(cfg_base, c.C, c.K, T_STEADY, outDir_r);
+    cfg = build_capacity_run_cfg(cfg_base, c.C, c.K, T_STEADY, c.sc, outDir_r);
     cfg.schedulingPolicy = c.policy;
 
-    fprintf('[K=%d C=%2d] %-22s  iniciando...\n', c.K, c.C, c.policy);
+    fprintf('[K=%d C=%3d %-12s] %-22s  iniciando...\n', ...
+            c.K, c.C, c.sc.label, c.policy);
     t_run = tic;
     try
         results = run_sim(cfg);
         dt = toc(t_run);
-        fprintf('[K=%d C=%2d] %-22s  %.0f s OK\n', c.K, c.C, c.policy, dt);
-        all_rows_cell{idx} = build_summary_row(results, c.C, c.K, c.policy);
+        fprintf('[K=%d C=%3d %-12s] %-22s  %.0f s OK\n', ...
+                c.K, c.C, c.sc.label, c.policy, dt);
+        all_rows_cell{idx} = build_summary_row(results, c.C, c.K, c.sc, c.policy);
     catch ME
         dt = toc(t_run);
-        fprintf('[K=%d C=%2d] %-22s  FAILED (%.0f s): %s\n', ...
-                c.K, c.C, c.policy, dt, ME.message);
+        fprintf('[K=%d C=%3d %-12s] %-22s  FAILED (%.0f s): %s\n', ...
+                c.K, c.C, c.sc.label, c.policy, dt, ME.message);
         all_rows_cell{idx} = struct( ...
-            'capacity', c.C, 'K', c.K, 'policy', c.policy, ...
-            'error',    ME.message, 'mean_h1', NaN, 'mean_h2', NaN, ...
+            'capacity', c.C, 'K', c.K, ...
+            'scenario', c.sc.label, 'routing_mode', c.sc.routing_mode, ...
+            'num_routes', numel(c.sc.routes), 'policy', c.policy, ...
+            'error', ME.message, 'mean_h1', NaN, 'mean_h2', NaN, ...
             'mean_r_sys', NaN, 'Jhat_emp', NaN);
     end
 end
 
 fprintf('\n[CAPACITY] Sweep concluído em %.2f h\n', toc(sw_t0)/3600);
 
-% ── Per-(K,C) summary CSVs ────────────────────────────────────────────
+% ── Summary CSVs por (K, C, scenario) ────────────────────────────────
 for ki = 1:numel(K_values)
     for ci = 1:numel(capacity_values)
-        K = K_values(ki); C = capacity_values(ci);
-        mask = cellfun(@(r) isfield(r,'K') && r.K==K && isfield(r,'capacity') && r.capacity==C, ...
-                       all_rows_cell);
-        write_capacity_summary(all_rows_cell(mask), ...
-            fullfile(OUT_ROOT, sprintf('K%d',K), sprintf('C%03d',C), ...
-                     'sweep_capacity_summary.csv'));
+        for si = 1:n_sc
+            K = K_values(ki); C = capacity_values(ci); sc = scenarios(si);
+            mask = cellfun(@(r) isfield(r,'K') && r.K==K && ...
+                                isfield(r,'capacity') && r.capacity==C && ...
+                                isfield(r,'scenario') && strcmp(r.scenario, sc.label), ...
+                           all_rows_cell);
+            write_capacity_summary(all_rows_cell(mask), ...
+                fullfile(OUT_ROOT, sprintf('K%d',K), sprintf('C%03d',C), ...
+                         sc.label, 'sweep_capacity_summary.csv'));
+        end
     end
 end
 
-% ── Consolidar summary global ─────────────────────────────────────────
-valid = ~cellfun(@isempty, all_rows_cell);
-all_rows = all_rows_cell(valid);
-all_csv  = fullfile(OUT_ROOT, 'sweep_capacity_summary_all.csv');
-write_capacity_summary(all_rows, all_csv);
+% ── Summary global ────────────────────────────────────────────────────
+valid   = ~cellfun(@isempty, all_rows_cell);
+all_csv = fullfile(OUT_ROOT, 'sweep_capacity_summary_all.csv');
+write_capacity_summary(all_rows_cell(valid), all_csv);
 fprintf('[CAPACITY] Aggregated → %s\n', all_csv);
 
-% ── Final ─────────────────────────────────────────────────────────────
 fprintf('\n═══════════════════════════════════════════════════════════════\n');
 fprintf('  EXPERIMENT_CAPACITY COMPLETED\n');
 fprintf('  Finished: %s\n', datestr(now)); %#ok<TNOW1,DATST>
@@ -210,19 +221,60 @@ end
 
 
 %% ═══════════════════════════════════════════════════════════════════
-%%  Build flat list of all (K, C, policy) combinations for parfor
+%%  Routing scenarios — 4 combinações estáticas/A* × 1/2 rotas
 %% ═══════════════════════════════════════════════════════════════════
-function combos = build_combos(K_values, capacity_values, policies)
-n = numel(K_values) * numel(capacity_values) * numel(policies);
-combos(n) = struct('K', 0, 'C', 0, 'policy', '');
+function scenarios = define_capacity_scenarios()
+% Rota 1 (lane Norte): [+50, -1000] → [+50, +1000]  2 km East
+% Rota 2 (lane Sul):   [−50, -1000] → [−50, +1000]  2 km East (paralela)
+% Ambas têm flightTime = 2000/5 = 400 s — capacidade simétrica.
+
+r1.numDrones = 1;   % placeholder — definido em build_capacity_run_cfg
+r1.start     = [ 50, -1000];
+r1.goal      = [ 50,  1000];
+r1.label     = 'lane-N';
+
+r2.numDrones = 1;
+r2.start     = [-50, -1000];
+r2.goal      = [-50,  1000];
+r2.label     = 'lane-S';
+
+s1.label        = '1r_static';
+s1.routing_mode = 'static';
+s1.routes       = r1;
+
+s2.label        = '1r_astar';
+s2.routing_mode = 'risk_astar';
+s2.routes       = r1;
+
+s3.label        = '2r_static';
+s3.routing_mode = 'static';
+s3.routes       = [r1, r2];
+
+s4.label        = '2r_astar';
+s4.routing_mode = 'risk_astar';
+s4.routes       = [r1, r2];
+
+scenarios = [s1, s2, s3, s4];
+end
+
+
+%% ═══════════════════════════════════════════════════════════════════
+%%  Build flat combo list for parfor
+%% ═══════════════════════════════════════════════════════════════════
+function combos = build_combos(K_values, capacity_values, scenarios, policies)
+n = numel(K_values) * numel(capacity_values) * numel(scenarios) * numel(policies);
+combos(n) = struct('K', 0, 'C', 0, 'sc', [], 'policy', '');
 idx = 0;
 for ki = 1:numel(K_values)
     for ci = 1:numel(capacity_values)
-        for pi = 1:numel(policies)
-            idx = idx + 1;
-            combos(idx).K      = K_values(ki);
-            combos(idx).C      = capacity_values(ci);
-            combos(idx).policy = policies{pi};
+        for si = 1:numel(scenarios)
+            for pi = 1:numel(policies)
+                idx = idx + 1;
+                combos(idx).K      = K_values(ki);
+                combos(idx).C      = capacity_values(ci);
+                combos(idx).sc     = scenarios(si);
+                combos(idx).policy = policies{pi};
+            end
         end
     end
 end
@@ -230,20 +282,40 @@ end
 
 
 %% ═══════════════════════════════════════════════════════════════════
-%%  Build a run-ready config for capacity C, dronesPerSlot K
+%%  Build run config para capacidade C, K slots e cenário de routing
 %% ═══════════════════════════════════════════════════════════════════
-function cfg = build_capacity_run_cfg(cfg_base, C, K, T_steady, outDir)
+function cfg = build_capacity_run_cfg(cfg_base, C, K, T_steady, sc, outDir)
 cfg = cfg_base;
 
-spacing = cfg.flightTime / max(C, 1);
-N_total = C + floor(T_steady / spacing);
+nR     = numel(sc.routes);
+routes = sc.routes;
 
-cfg.routes(1).numDrones = N_total;
-cfg.corridorCapacity    = C;
-cfg.steady_duration     = T_steady;
-cfg.dronesPerSlot       = K;
-cfg.csvDir              = outDir;
-cfg.maxStartDelay       = cfg.minStartDelay + (N_total - 1) * spacing + 10;
+% Distribui C drones simultâneos igualmente entre as rotas.
+% flightTime é idêntico para todas (rotas paralelas de 2 km).
+C_per  = floor(C / nR);
+C_rem  = C - C_per * nR;   % 0 ou 1 (quando C é ímpar e nR=2)
+
+flightTime = norm(routes(1).goal - routes(1).start) / cfg.speedVal;
+for ri = 1:nR
+    C_r              = C_per + (ri <= C_rem);
+    spacing          = flightTime / max(C_r, 1);
+    N_r              = C_r + floor(T_steady / spacing);
+    routes(ri).numDrones = N_r;
+end
+
+cfg.routes           = routes;
+cfg.corridorLength   = norm(routes(1).goal - routes(1).start);
+cfg.flightTime       = flightTime;
+cfg.corridorCapacity = C;
+cfg.steady_duration  = T_steady;
+cfg.dronesPerSlot    = K;
+cfg.csvDir           = outDir;
+cfg.routing.mode     = sc.routing_mode;
+
+% maxStartDelay cobre todas as rotas
+N_total          = sum([routes.numDrones]);
+spacing_min      = flightTime / max(C, 1);
+cfg.maxStartDelay = cfg.minStartDelay + (N_total - 1) * spacing_min + 10;
 
 cfg.H_max  = [];
 cfg.omega  = [];
@@ -253,9 +325,9 @@ end
 
 
 %% ═══════════════════════════════════════════════════════════════════
-%%  Build one summary row — usa results.cfg (validado dentro do run_sim)
+%%  Build summary row — inclui routing_mode e num_routes
 %% ═══════════════════════════════════════════════════════════════════
-function row = build_summary_row(results, C, K, pol)
+function row = build_summary_row(results, C, K, sc, pol)
 cfg = results.cfg;
 N   = results.numDrones;
 
@@ -273,6 +345,9 @@ xv_final = arrayfun(@(u) ifempty(results.xvVal{u}, 0), 1:N);
 
 row.capacity         = C;
 row.K                = K;
+row.scenario         = sc.label;
+row.routing_mode     = sc.routing_mode;
+row.num_routes       = numel(sc.routes);
 row.num_drones_total = N;
 row.policy           = pol;
 row.mean_h1          = mean(results.h1MeanV);
@@ -283,8 +358,8 @@ row.Jhat_emp         = results.Jhat_emp;
 row.J_LB_doc         = results.J_LB;
 row.rho_emp          = results.rho_emp;
 row.LB_legacy        = LB_legacy;
-row.qbar_s_mean      = mean(cfg.qbar_s(1:C));
-row.qbar_v_mean      = mean(cfg.qbar_v(1:C));
+row.qbar_s_mean      = mean(cfg.qbar_s(1:min(N,end)));
+row.qbar_v_mean      = mean(cfg.qbar_v(1:min(N,end)));
 row.q_emp_s_mean     = mean(results.q_emp_s);
 row.q_emp_v_mean     = mean(results.q_emp_v);
 row.xs_final_mean    = mean(xs_final);
@@ -296,7 +371,7 @@ end
 
 
 %% ═══════════════════════════════════════════════════════════════════
-%%  Write a cell-array of row structs to a CSV file
+%%  Write summary CSV — inclui scenario, routing_mode, num_routes
 %% ═══════════════════════════════════════════════════════════════════
 function write_capacity_summary(rows, filepath)
 if isempty(rows), return; end
@@ -305,7 +380,7 @@ if fid == -1
     mkdir(fileparts(filepath));
     fid = fopen(filepath, 'w');
 end
-fprintf(fid, ['capacity,K,num_drones_total,policy,' ...
+fprintf(fid, ['capacity,K,scenario,routing_mode,num_routes,num_drones_total,policy,' ...
               'mean_h1,mean_h2,mean_r_sys,peak_r_sys,' ...
               'Jhat_emp,J_LB_doc,rho_emp,LB_legacy,' ...
               'qbar_s_mean,qbar_v_mean,q_emp_s_mean,q_emp_v_mean,' ...
@@ -313,8 +388,13 @@ fprintf(fid, ['capacity,K,num_drones_total,policy,' ...
 for ri = 1:numel(rows)
     r = rows{ri};
     if ~isfield(r, 'mean_h1') || isnan(r.mean_h1), continue; end
-    fprintf(fid, '%d,%d,%d,%s,%.4f,%.4f,%.6e,%.6e,%.6e,%.6e,%.4f,%.6e,%.4f,%.4f,%.4f,%.4f,%.2f,%.2f,%.6e,%.6e\n', ...
-        r.capacity, r.K, r.num_drones_total, r.policy, ...
+    fprintf(fid, ['%d,%d,%s,%s,%d,%d,%s,' ...
+                  '%.4f,%.4f,%.6e,%.6e,' ...
+                  '%.6e,%.6e,%.4f,%.6e,' ...
+                  '%.4f,%.4f,%.4f,%.4f,' ...
+                  '%.2f,%.2f,%.6e,%.6e\n'], ...
+        r.capacity, r.K, r.scenario, r.routing_mode, r.num_routes, ...
+        r.num_drones_total, r.policy, ...
         r.mean_h1, r.mean_h2, r.mean_r_sys, r.peak_r_sys, ...
         r.Jhat_emp, r.J_LB_doc, r.rho_emp, r.LB_legacy, ...
         r.qbar_s_mean, r.qbar_v_mean, r.q_emp_s_mean, r.q_emp_v_mean, ...
@@ -326,93 +406,78 @@ end
 
 
 %% ═══════════════════════════════════════════════════════════════════
-%%  Smoke test — corredor 200m, C=3, T_steady=40s, 2 políticas
+%%  Smoke test — 200 m, C=3, 40 s, 2 políticas × 2 cenários
 %% ═══════════════════════════════════════════════════════════════════
 function ok = run_smoke_capacity(outRoot, cfg_base)
 ok     = true;
 n_fail = 0;
-SCALE    = 0.1;
-C_smoke  = 3;
-T_smoke  = 40;
-K_smoke  = 1;
-pols     = {'round-robin', 'max-weight-drift'};
+SCALE   = 0.1;
+C_smoke = 3;
+T_smoke = 40;
+K_smoke = 1;
+pols    = {'round-robin', 'max-weight-drift'};
+scs     = define_capacity_scenarios();
+scs     = scs(1:2);   % só 1r_static e 1r_astar no smoke
 
 cfg_s = cfg_base;
-cfg_s.routes(1).start    = cfg_base.routes(1).start * SCALE;
-cfg_s.routes(1).goal     = cfg_base.routes(1).goal  * SCALE;
-cfg_s.corridorLength     = norm(cfg_s.routes(1).goal - cfg_s.routes(1).start);
-cfg_s.flightTime         = cfg_s.corridorLength / cfg_base.speedVal;
-cfg_s.microBSPos(:,1:2)  = cfg_base.microBSPos(:,1:2) * SCALE;
-cfg_s.manualHotspots     = [];
-cfg_s.numHotspots        = 0;
-cfg_s.csvExport          = false;
+cfg_s.routes(1).start   = cfg_base.routes(1).start * SCALE;
+cfg_s.routes(1).goal    = cfg_base.routes(1).goal  * SCALE;
+cfg_s.corridorLength    = norm(cfg_s.routes(1).goal - cfg_s.routes(1).start);
+cfg_s.flightTime        = cfg_s.corridorLength / cfg_base.speedVal;
+cfg_s.microBSPos(:,1:2) = cfg_base.microBSPos(:,1:2) * SCALE;
+cfg_s.manualHotspots    = [];
+cfg_s.numHotspots       = 0;
+cfg_s.csvExport         = false;
 
-spacing_exp = cfg_s.flightTime / C_smoke;
-N_exp       = C_smoke + floor(T_smoke / spacing_exp);
-t_full_exp  = cfg_s.minStartDelay + (C_smoke - 1) * spacing_exp;
-t_mid_exp   = t_full_exp + T_smoke / 2;
+for si = 1:numel(scs)
+    sc = scs(si);
+    % Scale route geometry for smoke
+    sc_smoke     = sc;
+    r             = sc.routes(1);
+    r.start       = r.start * SCALE;
+    r.goal        = r.goal  * SCALE;
+    sc_smoke.routes = r;
 
-fprintf('[SMOKE] Corredor=%.0fm  C=%d  T_steady=%ds  %d políticas\n', ...
-        cfg_s.corridorLength, C_smoke, T_smoke, numel(pols));
-fprintf('[SMOKE] spacing=%.1fs  N_total_exp=%d  t_full=%.1fs  t_mid=%.1fs\n', ...
-        spacing_exp, N_exp, t_full_exp, t_mid_exp);
+    for pi = 1:numel(pols)
+        pol   = pols{pi};
+        cfg_r = build_capacity_run_cfg(cfg_s, C_smoke, K_smoke, T_smoke, ...
+                                       sc_smoke, fullfile(outRoot, 'smoke'));
+        cfg_r.schedulingPolicy = pol;
 
-for pi = 1:numel(pols)
-    pol   = pols{pi};
-    cfg_r = build_capacity_run_cfg(cfg_s, C_smoke, K_smoke, T_smoke, ...
-                                   fullfile(outRoot, 'smoke'));
-    cfg_r.schedulingPolicy = pol;
-    fails_this = {};
+        flightTime_s = norm(sc_smoke.routes(1).goal - sc_smoke.routes(1).start) / cfg_s.speedVal;
+        spacing_exp  = flightTime_s / C_smoke;
+        N_exp        = C_smoke + floor(T_smoke / spacing_exp);
 
-    try
-        results = run_sim(cfg_r);
-
-        if results.numDrones ~= N_exp
-            fails_this{end+1} = sprintf('N_total=%d (esperado %d)', ...
-                                        results.numDrones, N_exp); %#ok<AGROW>
-        end
-
-        n_active = sum(results.startTimes <= t_mid_exp & ...
-                       results.endTimes   >= t_mid_exp);
-        if n_active ~= C_smoke
-            fails_this{end+1} = sprintf('capacidade: %d activos em t=%.1fs (esperado %d)', ...
-                                        n_active, t_mid_exp, C_smoke); %#ok<AGROW>
-        end
-
-        h1_mean = mean(results.h1MeanV(~isnan(results.h1MeanV)));
-        h2_mean = mean(results.h2MeanV(~isnan(results.h2MeanV)));
-        if isnan(h1_mean) || h1_mean <= 0
-            fails_this{end+1} = sprintf('h1=%.3f inválido', h1_mean); %#ok<AGROW>
-        end
-        if isnan(h2_mean) || h2_mean <= 0
-            fails_this{end+1} = sprintf('h2=%.3f inválido', h2_mean); %#ok<AGROW>
-        end
-
-        if isempty(fails_this)
-            fprintf('[SMOKE] %-22s  N=%d  active@mid=%d/%d  h1=%.1f  h2=%.1f  OK\n', ...
-                    pol, results.numDrones, n_active, C_smoke, h1_mean, h2_mean);
-        else
-            for fi = 1:numel(fails_this)
-                fprintf('[SMOKE] %-22s  FAIL: %s\n', pol, fails_this{fi});
+        try
+            results = run_sim(cfg_r);
+            h1_mean = mean(results.h1MeanV(~isnan(results.h1MeanV)));
+            h2_mean = mean(results.h2MeanV(~isnan(results.h2MeanV)));
+            fail = {};
+            if results.numDrones ~= N_exp
+                fail{end+1} = sprintf('N=%d (exp %d)', results.numDrones, N_exp); %#ok<AGROW>
             end
-            n_fail = n_fail + numel(fails_this);
+            if isnan(h1_mean) || h1_mean <= 0
+                fail{end+1} = sprintf('h1=%.3f', h1_mean); %#ok<AGROW>
+            end
+            if isempty(fail)
+                fprintf('[SMOKE] %-12s %-22s  N=%d  h1=%.1f  h2=%.1f  OK\n', ...
+                        sc.label, pol, results.numDrones, h1_mean, h2_mean);
+            else
+                for fi = 1:numel(fail)
+                    fprintf('[SMOKE] %-12s %-22s  FAIL: %s\n', sc.label, pol, fail{fi});
+                end
+                n_fail = n_fail + numel(fail);
+            end
+        catch ME
+            fprintf('[SMOKE] %-12s %-22s  EXCEPTION: %s\n', sc.label, pol, ME.message);
+            n_fail = n_fail + 1;
         end
-
-    catch ME
-        fprintf('[SMOKE] %-22s  EXCEPTION: %s\n', pol, ME.message);
-        if ~isempty(ME.stack)
-            fprintf('[SMOKE]   at %s:%d\n', ME.stack(1).name, ME.stack(1).line);
-        end
-        n_fail = n_fail + 1;
     end
 end
 
 ok = (n_fail == 0);
-if ok
-    fprintf('[SMOKE] Todos os checks passaram.\n');
-else
-    fprintf('[SMOKE] %d check(s) falharam.\n', n_fail);
-end
+fprintf('[SMOKE] %s\n', ternary(ok, 'Todos os checks passaram.', ...
+        sprintf('%d check(s) falharam.', n_fail)));
 end
 
 

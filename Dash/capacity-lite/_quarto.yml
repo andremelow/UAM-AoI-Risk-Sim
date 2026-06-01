@@ -1,0 +1,24 @@
+project:
+  type: website
+  output-dir: ../../docs
+
+website:
+  title: "UAM · Capacity Lite"
+  description: "Análise de capacidade do corredor UAM — Interlagos"
+  favicon: ""
+  navbar:
+    left:
+      - text: "Dashboard"
+        href: index.html
+    right:
+      - text: "Dados"
+        href: "data/capacity_summary.csv"
+
+format:
+  html:
+    theme: darkly
+    page-layout: full
+    grid:
+      body-width: 1400px
+    resources:
+      - data/
