@@ -253,6 +253,110 @@ p_hmap <- plot_ly(hm,
 show_plots()
 ```
 
+## Risk Gap
+
+```{r risk-gap, include=FALSE}
+HIGHLIGHT <- c("max-weight-drift", "aoi-normalized")
+
+# Colapsar K e cenário: média de mean_risk por (C, policy)
+df_gap <- df |>
+  group_by(C, policy) |>
+  summarise(risk = mean(mean_risk, na.rm=TRUE), .groups="drop") |>
+  group_by(C) |>
+  mutate(
+    rr   = risk[match("round-robin", policy)],
+    norm = risk / rr                            # round-robin = 1.0
+  ) |>
+  ungroup()
+
+# Paleta: destacados em cor plena; demais em cinza tênue
+col_for  <- function(pol) if (pol %in% HIGHLIGHT) POL_COLORS[pol] else "#4a4a6a"
+wid_for  <- function(pol) if (pol %in% HIGHLIGHT) 3   else 1.2
+opa_for  <- function(pol) if (pol %in% HIGHLIGHT) 1.0 else 0.35
+size_for <- function(pol) if (pol %in% HIGHLIGHT) 7   else 0
+
+pols_ord <- c(HIGHLIGHT,
+              setdiff(intersect(names(POL_COLORS), unique(df_gap$policy)),
+                      c(HIGHLIGHT, "round-robin")),
+              "round-robin")
+
+p_gap <- plot_ly()
+
+for (pol in pols_ord) {
+  d <- filter(df_gap, policy == pol)
+  if (!nrow(d)) next
+  is_hl <- pol %in% HIGHLIGHT
+  is_rr <- pol == "round-robin"
+
+  p_gap <- add_trace(p_gap,
+    data = d, x = ~C, y = ~norm,
+    type = "scatter", mode = if (is_hl) "lines+markers" else "lines",
+    name = pol,
+    opacity = if (is_rr) 0.6 else opa_for(pol),
+    line = list(
+      color = if (is_rr) "#888899" else col_for(pol),
+      width = if (is_rr) 1.5       else wid_for(pol),
+      dash  = if (is_rr) "dot"     else "solid"
+    ),
+    marker = list(color = col_for(pol), size = size_for(pol), symbol = "circle"),
+    hovertemplate = paste0(
+      "<b>", pol, "</b><br>C=%{x}<br>",
+      "Risco / RR = %{y:.3f}<extra></extra>"
+    )
+  )
+}
+
+# Rótulos diretos nas curvas destacadas (extremo direito)
+label_annots <- lapply(HIGHLIGHT, function(pol) {
+  d <- filter(df_gap, policy == pol)
+  xr <- max(d$C, na.rm=TRUE)
+  yr <- d$norm[which.max(d$C)]
+  list(x=xr+1, y=yr, text=pol, xanchor="left", showarrow=FALSE,
+       font=list(color=POL_COLORS[pol], size=10, face="bold"))
+})
+
+p_gap <- layout(p_gap,
+  title = list(
+    text = "Risk Gap vs Carga — normalizado pelo baseline round-robin",
+    font = list(color=TEXT, size=13)
+  ),
+  xaxis = list(
+    title = "Capacidade C (drones simultâneos)",
+    color = AXIS, gridcolor = GRID,
+    tickvals = seq(10,100,10), zeroline = FALSE
+  ),
+  yaxis = list(
+    title = "Risco médio / round-robin  (RR = 1.0)",
+    color = AXIS, gridcolor = GRID, zeroline = FALSE,
+    tickformat = ".2f"
+  ),
+  shapes = list(
+    # linha de referência RR = 1.0
+    list(type="line", x0=10, x1=100, y0=1, y1=1,
+         line=list(color="#888899", dash="dot", width=1.2))
+  ),
+  annotations = c(
+    list(list(x=12, y=1.005, text="baseline (round-robin)",
+              xanchor="left", showarrow=FALSE,
+              font=list(color="#888899", size=9))),
+    label_annots
+  ),
+  plot_bgcolor=PANEL, paper_bgcolor=BG,
+  font   = list(color=TEXT, size=10),
+  legend = list(font=list(color=TEXT, size=9), bgcolor=BG,
+                tracegroupgap=2),
+  margin = list(l=70, r=120, t=55, b=50),
+  hovermode = "x unified"
+) |> config(displayModeBar=FALSE)
+```
+
+> **Como ler:** round-robin = 1.0 (teto ingênuo). Curvas abaixo de 1.0 indicam ganho real de risco em relação ao baseline.
+> Curvas em destaque: **max-weight-drift** e **aoi-normalized**.
+
+```{r}
+p_gap
+```
+
 ## Demanda Suprimida
 
 > **QoS target:** utilização do canal ≥ `r sprintf("%.0f%%", QOS_TARGET*100)`.
