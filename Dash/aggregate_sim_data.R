@@ -52,6 +52,8 @@ aggregate_sim_data <- function(csv_dir,
   dir.create(agg_dir, showWarnings = FALSE, recursive = TRUE)
 
   files       <- list.files(csv_dir, pattern = "\\.csv$", full.names = TRUE, recursive = TRUE)
+  # Exclude the agg/ output folder itself (avoid re-reading previous results)
+  files       <- files[!str_detect(files, paste0(.Platform$file.sep, "agg", .Platform$file.sep))]
   files       <- files[!str_detect(basename(files), "^sweep_routing_summary")]
   f_manifest  <- files[str_detect(files, "_manifest\\.csv$")]
   f_summary   <- files[str_detect(files, "_drone_summary\\.csv$")]
@@ -139,10 +141,10 @@ aggregate_sim_data <- function(csv_dir,
   man_keep <- intersect(
     c("run_id", "L_vid", "w_coh", "corridor_length", "update_rate",
       "w_unc", "w_map", "w_vid", "sim_slots", "threshold_snr",
-      "corridor_capacity"),
+      "corridor_capacity", "routing_mode", "num_routes"),
     names(manifest)
   )
-  runs <- left_join(runs, manifest[, man_keep], by = "run_id")
+  runs <- left_join(runs, distinct(manifest[, man_keep], run_id, .keep_all = TRUE), by = "run_id")
 
   # ── Join routing scenario info from sweep_routing_summary_all.csv ────────────
   # The per-run manifest does not record scenario/routing_mode/num_routes.
@@ -150,7 +152,12 @@ aggregate_sim_data <- function(csv_dir,
   # runs are sorted by timestamp (encoded in run_id) and matched to the fixed
   # scenario order produced by define_routing_scenarios():
   #   1 = 1-route static, 2 = 1-route A*, 3 = N-route static, 4 = N-route A*
-  sw_dir  <- file.path(csv_dir, "sweep_routing")
+  # Accept both "sweep_routing/" (legacy) and "sweep/" (current MATLAB output)
+  sw_dir <- if (dir.exists(file.path(csv_dir, "sweep_routing")))
+               file.path(csv_dir, "sweep_routing")
+             else if (dir.exists(file.path(csv_dir, "sweep")))
+               file.path(csv_dir, "sweep")
+             else file.path(csv_dir, "sweep_routing")
   sw_path <- file.path(sw_dir, "sweep_routing_summary_all.csv")
 
   # Fallback: if _all.csv is missing, build it from per-directory summaries.

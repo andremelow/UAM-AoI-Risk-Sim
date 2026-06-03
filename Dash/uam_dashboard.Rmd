@@ -147,7 +147,9 @@ load_dir <- function(dir_path) {
     runs <- left_join(runs,mp[,keep],by="run_id")
   }
   # ── Join routing_mode / num_routes from sweep_routing_summary files ──────
-  sw_dir <- file.path(dir_path,"sweep_routing")
+  sw_dir <- if (dir.exists(file.path(dir_path,"sweep_routing")))
+               file.path(dir_path,"sweep_routing")
+             else file.path(dir_path,"sweep")
   if (dir.exists(sw_dir)) {
     sw_files <- list.files(sw_dir, pattern="^sweep_routing_summary\\.csv$",
                            full.names=TRUE, recursive=TRUE)
@@ -409,8 +411,10 @@ output$ui_routing_mode <- renderUI({
   if(is.null(d)||!"routing_mode"%in%names(d)||all(is.na(d$routing_mode))) return(NULL)
   modes <- sort(unique(na.omit(d$routing_mode)))
   if(length(modes)<2) return(NULL)
+  pretty <- c(static="Static", risk_astar="Risk-A*")
+  labels <- ifelse(modes %in% names(pretty), pretty[modes], modes)
   selectInput("sel_routing_mode","Routing",
-    choices=c("(all)"="all","Static"="static","Risk-A*"="risk_astar"),
+    choices=c("(all)"="all", setNames(modes, labels)),
     selected="all")
 })
 output$ui_num_routes <- renderUI({

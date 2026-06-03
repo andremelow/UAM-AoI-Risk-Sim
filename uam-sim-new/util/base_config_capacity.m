@@ -11,15 +11,17 @@ function cfg = base_config_capacity()
 
 cfg = build_scenario_config();   % start from canonical defaults
 
-% ---- Corridor: 2 km straight East-West --------------------------------
+% ---- Corredor: 2 km East, 2 lanes paralelos (North ±50 m) ------------
+% Lane Norte (+50 m) e Lane Sul (−50 m) têm o mesmo flightTime = 400 s.
+% define_capacity_scenarios() selecciona 1 ou 2 lanes por cenário.
 cfg.routes      = struct();
-cfg.routes(1).numDrones = 1;          % placeholder; set by build_capacity_config
-cfg.routes(1).start     = [0, -1000]; % [North, East]  m
-cfg.routes(1).goal      = [0,  1000]; % [North, East]  m
-cfg.routes(1).label     = '2km East';
+cfg.routes(1).numDrones = 1;           % placeholder; set by build_capacity_run_cfg
+cfg.routes(1).start     = [ 50, -1000]; % [North, East]  m  — lane Norte
+cfg.routes(1).goal      = [ 50,  1000];
+cfg.routes(1).label     = 'lane-N';
 
-cfg.corridorLength = 2000;            % m
-cfg.speedVal       = 5;               % m/s
+cfg.corridorLength = 2000;             % m  (rota 1; ambas têm o mesmo comprimento)
+cfg.speedVal       = 5;                % m/s
 cfg.flightTime     = cfg.corridorLength / cfg.speedVal;   % 400 s
 
 % ---- gNB: centre of corridor at ground level --------------------------
