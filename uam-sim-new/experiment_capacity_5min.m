@@ -8,7 +8,7 @@ function experiment_capacity_5min(varargin)
 %
 %  Sweep axes:
 %    K       — dronesPerSlot  ∈ [1 2 4 8 16 32]
-%    C       — corridorCapacity ∈ [2 4 8 16 32 62]
+%    C       — corridorCapacity ∈ [2 4 8 16 32 64]
 %    Routing — static | risk_astar  ×  1 route | 2 routes  (4 cenários)
 %    Policy  — round-robin | aoi-pure | aoi-normalized | risk-aware | max-weight-drift | pf-classic
 %
@@ -59,7 +59,7 @@ end
 
 % ── Sweep axes ────────────────────────────────────────────────────────
 if isempty(cap_override)
-    capacity_values = [2, 4, 8, 16, 32, 62];
+    capacity_values = [2, 4, 8, 16, 32, 64];
 else
     capacity_values = cap_override;
 end
