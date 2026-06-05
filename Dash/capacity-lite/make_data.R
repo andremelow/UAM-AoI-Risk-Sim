@@ -1,5 +1,5 @@
 #!/usr/bin/env Rscript
-# Agrega CSVs por-run do experimento capacity_5min em um único summary.
+# Agrega CSVs por-run do experimento capacity_15min em um único summary.
 # Rodar do raiz do projeto:
 #   Rscript Dash/capacity-lite/make_data.R
 
@@ -10,7 +10,7 @@ suppressMessages({
   library(stringr)
 })
 
-SIM_DIR  <- "uam-sim-new/csv_export/capacity_5min"
+SIM_DIR  <- "uam-sim-new/csv_export/capacity_15min"
 OUT_FILE <- "Dash/capacity-lite/data/capacity_summary.csv"
 
 manifests <- list.files(SIM_DIR, pattern = "_manifest\\.csv$",
