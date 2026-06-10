@@ -41,7 +41,13 @@ process <- function(mf_path) {
   vid_ok   <- sum(ds$slots_vid_ok,   na.rm = TRUE)
   vid_fail <- sum(ds$slots_vid_fail, na.rm = TRUE)
 
+  exp_tag <- {
+    m <- str_match(mf_path, "csv_export/([^/]+)/")
+    if (!is.na(m[1, 2])) m[1, 2] else "unknown"
+  }
+
   tibble(
+    experiment       = exp_tag,
     K                = as.integer(str_extract(k_tag, "[0-9]+")),
     C                = as.integer(mf$corridor_capacity[1]),
     scenario         = sc_tag,
@@ -63,7 +69,7 @@ df   <- bind_rows(compact(rows))
 if (nrow(df) == 0) stop("Nenhum dado agregado — verifique SIM_DIR.")
 
 df <- df |>
-  arrange(scenario, K, C, policy)
+  arrange(experiment, scenario, K, C, policy)
 
 dir.create(dirname(OUT_FILE), recursive = TRUE, showWarnings = FALSE)
 write_csv(df, OUT_FILE)
