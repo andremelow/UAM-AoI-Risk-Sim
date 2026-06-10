@@ -10,12 +10,19 @@ suppressMessages({
   library(stringr)
 })
 
-SIM_DIR  <- "uam-sim-new/csv_export/capacity_15min"
+SIM_DIRS <- c(
+  "uam-sim-new/csv_export/capacity_15min",
+  "uam-sim-new/csv_export/capacity_15min_sw_nsw"
+)
 OUT_FILE <- "Dash/capacity-lite/data/capacity_summary.csv"
 
-manifests <- list.files(SIM_DIR, pattern = "_manifest\\.csv$",
-                        recursive = TRUE, full.names = TRUE)
-cat(sprintf("[make_data] %d manifests encontrados em %s\n", length(manifests), SIM_DIR))
+manifests <- unlist(lapply(SIM_DIRS, function(d) {
+  list.files(d, pattern = "_manifest\\.csv$", recursive = TRUE, full.names = TRUE)
+}))
+# Remove duplicates (same run appearing in both dirs)
+manifests <- unique(manifests)
+cat(sprintf("[make_data] %d manifests encontrados em %s\n",
+            length(manifests), paste(SIM_DIRS, collapse = " + ")))
 
 process <- function(mf_path) {
   ds_path <- sub("_manifest\\.csv$", "_drone_summary.csv", mf_path)
