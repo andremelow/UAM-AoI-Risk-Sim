@@ -1,19 +1,11 @@
 ---
-title: "UAM Capacity · Lite Dashboard"
+title: "UAM Capacity · Risco vs Capacidade"
 subtitle: "Corredor Interlagos — sweep K × C × routing × policy"
 format:
   html:
     theme: darkly
     page-layout: full
     self-contained: true
-    include-after-body:
-      text: |
-        <script>
-        /* Força plotly a redimensionar quando um sub-tab fica visível */
-        document.addEventListener('shown.bs.tab', function() {
-          window.dispatchEvent(new Event('resize'));
-        });
-        </script>
 execute:
   echo: false
   warning: false
@@ -25,11 +17,10 @@ library(dplyr)
 library(plotly)
 library(bslib)
 library(htmltools)
-library(ggplot2)
+library(htmlwidgets)
 
 df <- read.csv("data/capacity_summary.csv", stringsAsFactors = FALSE)
 
-# ── Paleta completa: políticas originais + variantes sw ─────────────────────
 POL_COLORS <- c(
   "round-robin"      = "#378ADD",
   "round-robin-sw"   = "#7db8e8",
@@ -42,443 +33,223 @@ POL_COLORS <- c(
   "max-weight-sw"    = "#f9c784"
 )
 
-BG   <- "#1e1e2e"; PANEL <- "#13131f"
-TEXT <- "#cdd6f4"; AXIS  <- "#a6adc8"; GRID <- "#2a2a4a"
-C_TICKS    <- sort(unique(df$C))
-QOS_TARGET <- 0.85
+BG    <- "#1e1e2e"; PANEL <- "#13131f"
+TEXT  <- "#cdd6f4"; AXIS  <- "#a6adc8"; GRID  <- "#2a2a4a"
+C_TICKS <- sort(unique(df$C))
 
-# Labels e highlights por experimento — adicionar aqui novos experimentos
 EXP_LABELS <- c(
   "capacity_15min"        = "15 min · original",
   "capacity_15min_sw_nsw" = "15 min · sw vs nsw"
 )
-EXP_HIGHLIGHT <- list(
-  "capacity_15min"        = c("max-weight-drift", "aoi-normalized"),
-  "capacity_15min_sw_nsw" = c("max-weight-sw", "max-weight-drift")
-)
+get_exp_label <- function(e) { l <- EXP_LABELS[[e]]; if (is.null(l)) e else l }
 
-get_exp_label     <- function(e) { l <- EXP_LABELS[[e]];     if (is.null(l)) e else l }
-get_exp_highlight <- function(e) { h <- EXP_HIGHLIGHT[[e]];  if (is.null(h)) character(0) else h }
+# ── Filtro + gráfico de risco ─────────────────────────────────────────────────
+#
+#  Gera um gráfico plotly com filtros interativos (Cenário × K) embutidos via
+#  JavaScript. Cada combinação (cenário, K, política) é uma trace separada;
+#  o JS atualiza visibility quando o usuário clica nos botões.
+#
+build_risk_chart <- function(d) {
+  pols_exp <- intersect(names(POL_COLORS), unique(d$policy))
 
-# ── make_ply: curvas C × métrica por política ────────────────────────────────
-make_ply <- function(d, y_col, y_title) {
-  agg <- if (nrow(d) > 0)
-    group_by(d, C, policy) |>
-      summarise(y = mean(.data[[y_col]], na.rm = TRUE), .groups = "drop")
-  else
-    data.frame(C = integer(), policy = character(), y = double())
+  # Agrega: (cenário, K, C, política) → risco médio
+  df_sc <- d |>
+    group_by(scenario, K, C, policy) |>
+    summarise(mean_risk = mean(mean_risk, na.rm = TRUE), .groups = "drop")
 
-  pols <- intersect(names(POL_COLORS), unique(agg$policy))
-  fig  <- plot_ly()
+  # "Todos": média sobre cenários
+  df_avg <- df_sc |>
+    group_by(K, C, policy) |>
+    summarise(mean_risk = mean(mean_risk, na.rm = TRUE), .groups = "drop") |>
+    mutate(scenario = "Todos")
 
-  for (pol in pols) {
-    sub <- filter(agg, policy == pol)
-    fig <- add_trace(fig,
-      data = sub, x = ~C, y = ~y,
-      type = "scatter", mode = "lines+markers", name = pol,
-      line   = list(color = POL_COLORS[pol], width = 2),
-      marker = list(color = POL_COLORS[pol], size  = 5),
-      hovertemplate = paste0("<b>", pol, "</b><br>C=%{x}<br>",
-                             y_title, "=%{y:.3g}<extra></extra>")
-    )
-  }
+  df_plot   <- bind_rows(df_sc, df_avg)
+  scenarios <- c("Todos", sort(unique(df_sc$scenario)))
+  k_vals    <- sort(unique(d$K))
 
-  if (length(pols) == 0)
-    fig <- add_annotations(fig, text = "Sem dados", x = 0.5, y = 0.5,
-                           xref = "paper", yref = "paper", showarrow = FALSE,
-                           font = list(color = AXIS, size = 14))
+  default_sc <- "Todos"
+  default_k  <- k_vals[1]
 
-  layout(fig,
-    title  = list(text = y_title, font = list(color = TEXT, size = 11)),
-    xaxis  = list(title = "C", color = AXIS, gridcolor = GRID,
-                  tickvals = C_TICKS, zeroline = FALSE),
-    yaxis  = list(title = "", color = AXIS, gridcolor = GRID, zeroline = FALSE),
-    plot_bgcolor  = PANEL, paper_bgcolor = BG,
-    font   = list(color = TEXT, size = 10),
-    legend = list(font = list(color = TEXT, size = 9), bgcolor = BG,
-                  orientation = "v"),
-    margin = list(l = 55, r = 10, t = 38, b = 42),
-    hovermode = "x unified"
-  ) |> config(displayModeBar = FALSE)
-}
+  fig        <- plot_ly()
+  trace_meta <- list()
+  seen_pols  <- character(0)
 
-# ── show_plots: grid 2+2+1 (filtrado por sc e/ou k) ─────────────────────────
-show_plots <- function(d, sc = NULL, k = NULL) {
-  if (!is.null(sc)) d <- filter(d, scenario == sc)
-  if (!is.null(k))  d <- filter(d, K == k)
-  p <- list(
-    h1     = make_ply(d, "mean_h1",          "AoI médio h₁ (slots)"),
-    risk   = make_ply(d, "mean_risk",         "Risco médio total"),
-    frames = make_ply(d, "frames_per_drone",  "Frames entregues / drone"),
-    util   = make_ply(d, "channel_util",      "Util. canal vídeo"),
-    h2     = make_ply(d, "mean_h2",           "AoI médio h₂ (slots)")
-  )
-  row <- function(...) div(style = "display:flex; gap:8px; margin-bottom:8px;", ...)
-  col <- function(w)   div(style = paste0("flex:", w, "; min-width:0;"))
-  tagList(
-    row(tagAppendChildren(col(1), p$h1),     tagAppendChildren(col(1), p$risk)),
-    row(tagAppendChildren(col(1), p$frames), tagAppendChildren(col(1), p$util)),
-    div(style = "margin-bottom:8px;", p$h2)
-  )
-}
+  for (sc in scenarios) {
+    for (k in k_vals) {
+      for (pol in pols_exp) {
+        sub <- filter(df_plot, scenario == sc, K == k, policy == pol)
+        if (nrow(sub) == 0) next
 
-# ── k_tabs: sub-tabs K para um cenário ───────────────────────────────────────
-k_tabs <- function(sc, d, uid) {
-  k_vals <- sort(unique(d$K))
-  panels <- lapply(k_vals, function(k) {
-    nav_panel(paste0("K = ", k), show_plots(d, sc, k))
-  })
-  do.call(navset_tab, c(panels, list(id = paste0("ktab_", uid, "_", sc))))
-}
+        is_default <- sc == default_sc && k == default_k
+        first_leg  <- !pol %in% seen_pols
+        if (first_leg) seen_pols <- c(seen_pols, pol)
 
-# ── Mapa de risco + rotas ────────────────────────────────────────────────────
-.HS <- matrix(c(
-    28,   24, .10,  90,   56,   28, .10,  90,   76,   46, .10, 130,
-   102,   50, .10, 210,  137,   57, .10, 210,  181,   72, .10, 210,
-   297,  376, .10, 210,  261,  415, .10, 210,  281,  402, .10, 210,
-   186,  455, .10, 210,  107,  488, .10, 210, -128,  -49, .10, 210,
-  -233,  -71, .10, 210, -183,  -68, .10, 210, -754,  567, .10, 210,
-  -686,  530, .10, 210, -621,  502, .10, 210, -587,  481, .10, 210,
-  -658,  499, .10, 210, -695,  518, .10, 210, -720,  524, .10, 210
-), ncol = 4, byrow = TRUE)
+        trace_meta[[length(trace_meta) + 1]] <- list(
+          sc  = sc,
+          k   = as.integer(k),
+          pol = pol
+        )
 
-make_route_map <- function(scenario) {
-  cell  <- 33
-  n_seq <- seq(-350 + cell/2, 350  - cell/2, by = cell)
-  e_seq <- seq(-1300 + cell/2, 1300 - cell/2, by = cell)
-  grid  <- expand.grid(N = n_seq, E = e_seq)
-  grid$risk <- 0
-  for (i in seq_len(nrow(.HS))) {
-    dN <- grid$N - .HS[i, 1]; dE <- grid$E - .HS[i, 2]
-    grid$risk <- grid$risk + .HS[i, 3] * exp(-(dN^2 + dE^2) / (2 * .HS[i, 4]^2))
-  }
-  grid$risk <- pmin(grid$risk, 1)
-
-  two_routes <- grepl("2r",    scenario)
-  is_astar   <- grepl("astar", scenario)
-  ltype      <- if (is_astar) "dashed" else "solid"
-  title_lbl  <- c(
-    `1r_static` = "Static · 1 rota",  `1r_astar`  = "Risk A★ · 1 rota",
-    `2r_static` = "Static · 2 rotas", `2r_astar`  = "Risk A★ · 2 rotas"
-  )[scenario]
-
-  ROUTE <- "#74c0fc"; BS_COL <- "#ffd700"
-  GRID_C <- "#2a2a4a"; TXT <- "#cdd6f4"; BG_C <- "#13131f"
-
-  p <- ggplot(grid, aes(x = N, y = E)) +
-    geom_raster(aes(fill = risk), interpolate = TRUE) +
-    scale_fill_gradientn(
-      colours = c(BG_C, "#2d1800", "#7a3200", "#bb1800", "#ff4400"),
-      limits  = c(0, 1), guide = "none"
-    ) +
-    annotate("segment", x=50, xend=50, y=-1000, yend=1000,
-             colour=ROUTE, linewidth=1.1, linetype=ltype) +
-    annotate("segment", x=50, xend=50, y=100, yend=350,
-             colour=ROUTE, linewidth=1.6,
-             arrow=arrow(length=unit(4,"pt"), type="closed")) +
-    annotate("point", x=50, y=c(-1000,1000),
-             shape=21, colour=ROUTE, fill=BG_C, size=1.8) +
-    {if (two_routes) list(
-      annotate("segment", x=-50, xend=-50, y=-1000, yend=1000,
-               colour=ROUTE, linewidth=1.1, linetype=ltype),
-      annotate("segment", x=-50, xend=-50, y=100, yend=350,
-               colour=ROUTE, linewidth=1.6,
-               arrow=arrow(length=unit(4,"pt"), type="closed")),
-      annotate("point", x=-50, y=c(-1000,1000),
-               shape=21, colour=ROUTE, fill=BG_C, size=1.8)
-    ) else NULL} +
-    annotate("point", x=0, y=0, shape=17, size=3.2, colour=BS_COL) +
-    annotate("text",  x=18, y=-90, label="gNB",
-             colour=BS_COL, size=2.1, hjust=0) +
-    annotate("text", x=50, y=-1055, label="W",
-             colour=ROUTE, size=2.0, hjust=0.5, fontface="bold") +
-    annotate("text", x=50, y= 1055, label="E",
-             colour=ROUTE, size=2.0, hjust=0.5, fontface="bold") +
-    coord_cartesian(xlim=c(-180,180), ylim=c(-1100,1100)) +
-    scale_x_continuous(breaks=c(-50,0,50), labels=c("−50","0","+50")) +
-    scale_y_continuous(breaks=seq(-1000,1000,500),
-                       labels=function(y) paste0(y/1000," km")) +
-    labs(title=title_lbl, x="Norte (m)", y=NULL) +
-    theme_minimal(base_size=8) +
-    theme(
-      plot.background  = element_rect(fill=BG_C,   colour=NA),
-      panel.background = element_rect(fill=BG_C,   colour=NA),
-      panel.grid.major = element_line(colour=GRID_C, linewidth=0.25),
-      panel.grid.minor = element_blank(),
-      plot.title  = element_text(colour=TXT, size=8.5, face="bold",
-                                 hjust=0.5, margin=margin(b=3)),
-      axis.text   = element_text(colour="#a6adc8", size=6.5),
-      axis.title  = element_text(colour="#a6adc8", size=7),
-      plot.margin = margin(4, 2, 4, 2)
-    )
-  p
-}
-
-route_map_tag <- function(scenario, width=180, height=440) {
-  tmp <- tempfile(fileext=".png")
-  on.exit(unlink(tmp), add=TRUE)
-  ggsave(tmp, make_route_map(scenario),
-         width=width/96, height=height/96, dpi=96, bg="#13131f")
-  tags$img(src=knitr::image_uri(tmp), width=paste0(width,"px"),
-           style="display:block; border-radius:4px; flex-shrink:0;")
-}
-
-scene_panel <- function(sc, d, uid) {
-  div(style="display:flex; gap:12px; align-items:flex-start;",
-    div(style="flex:0 0 180px; padding-top:2px;", route_map_tag(sc)),
-    div(style="flex:1; min-width:0;", k_tabs(sc, d, uid))
-  )
-}
-
-# ── Risk Gap por experimento ──────────────────────────────────────────────────
-make_risk_gap <- function(d, highlight) {
-  pols_all <- intersect(names(POL_COLORS), unique(d$policy))
-
-  df_gap <- d |>
-    group_by(C, policy) |>
-    summarise(risk = mean(mean_risk, na.rm=TRUE), .groups="drop") |>
-    group_by(C) |>
-    mutate(
-      rr   = risk[match("round-robin", policy)],
-      norm = risk / rr
-    ) |>
-    ungroup()
-
-  col_for  <- function(pol) if (pol %in% highlight) POL_COLORS[pol] else "#4a4a6a"
-  wid_for  <- function(pol) if (pol %in% highlight) 3    else 1.2
-  opa_for  <- function(pol) if (pol %in% highlight) 1.0  else 0.35
-  size_for <- function(pol) if (pol %in% highlight) 7    else 0
-
-  pols_ord <- c(highlight,
-                setdiff(intersect(names(POL_COLORS), unique(df_gap$policy)),
-                        c(highlight, "round-robin")),
-                "round-robin")
-
-  p_gap <- plot_ly()
-  for (pol in pols_ord) {
-    d2 <- filter(df_gap, policy == pol)
-    if (!nrow(d2)) next
-    is_hl <- pol %in% highlight
-    is_rr <- pol == "round-robin"
-    p_gap <- add_trace(p_gap,
-      data = d2, x = ~C, y = ~norm,
-      type = "scatter", mode = if (is_hl) "lines+markers" else "lines",
-      name = pol,
-      opacity = if (is_rr) 0.6 else opa_for(pol),
-      line = list(
-        color = if (is_rr) "#888899" else col_for(pol),
-        width = if (is_rr) 1.5       else wid_for(pol),
-        dash  = if (is_rr) "dot"     else "solid"
-      ),
-      marker = list(color=col_for(pol), size=size_for(pol), symbol="circle"),
-      hovertemplate = paste0(
-        "<b>", pol, "</b><br>C=%{x}<br>Risco/RR=%{y:.3f}<extra></extra>"
-      )
-    )
-  }
-
-  label_annots <- lapply(highlight, function(pol) {
-    d2 <- filter(df_gap, policy == pol)
-    if (!nrow(d2)) return(NULL)
-    xr <- max(d2$C, na.rm=TRUE)
-    yr <- d2$norm[which.max(d2$C)]
-    list(x=xr+1, y=yr, text=pol, xanchor="left", showarrow=FALSE,
-         font=list(color=POL_COLORS[pol], size=10))
-  })
-  label_annots <- Filter(Negate(is.null), label_annots)
-
-  layout(p_gap,
-    title = list(
-      text = "Risk Gap vs Carga — normalizado pelo baseline round-robin",
-      font = list(color=TEXT, size=13)
-    ),
-    xaxis = list(title="Capacidade C", color=AXIS, gridcolor=GRID,
-                 tickvals=C_TICKS, zeroline=FALSE),
-    yaxis = list(title="Risco médio / round-robin  (RR = 1.0)",
-                 color=AXIS, gridcolor=GRID, zeroline=FALSE, tickformat=".2f"),
-    shapes = list(list(type="line", x0=min(C_TICKS), x1=max(C_TICKS),
-                       y0=1, y1=1, line=list(color="#888899", dash="dot", width=1.2))),
-    annotations = c(
-      list(list(x=min(C_TICKS), y=1.005, text="baseline (round-robin)",
-                xanchor="left", showarrow=FALSE,
-                font=list(color="#888899", size=9))),
-      label_annots
-    ),
-    plot_bgcolor=PANEL, paper_bgcolor=BG,
-    font   = list(color=TEXT, size=10),
-    legend = list(font=list(color=TEXT, size=9), bgcolor=BG, tracegroupgap=2),
-    margin = list(l=70, r=120, t=55, b=50),
-    hovermode = "x unified"
-  ) |> config(displayModeBar=FALSE)
-}
-
-# ── Supressão + K mínimo + heatmap ──────────────────────────────────────────
-make_supr_plots <- function(d) {
-  pols_all <- intersect(names(POL_COLORS), unique(d$policy))
-  k_all    <- sort(unique(d$K))
-  dash_seq <- c("solid","dash","dot","dashdot","longdash","longdashdot")
-  DASH_K   <- setNames(dash_seq[seq_along(k_all)], as.character(k_all))
-
-  df_s <- d |>
-    mutate(supr = 1 - channel_util) |>
-    group_by(C, K, policy) |>
-    summarise(supr = mean(supr, na.rm=TRUE), .groups="drop")
-
-  p_supr <- plot_ly()
-  for (pol in pols_all) {
-    for (k in k_all) {
-      d2 <- filter(df_s, policy==pol, K==k)
-      if (!nrow(d2)) next
-      p_supr <- add_trace(p_supr,
-        data=d2, x=~C, y=~supr,
-        type="scatter", mode="lines+markers", name=pol,
-        legendgroup=pol, showlegend=(k==k_all[1]),
-        line=list(color=POL_COLORS[pol], dash=DASH_K[as.character(k)], width=2),
-        marker=list(color=POL_COLORS[pol], size=4),
-        hovertemplate=paste0("<b>",pol,"</b> K=",k,
-          "<br>C=%{x}<br>Supressão=%{y:.1%}<extra></extra>")
-      )
+        fig <- add_trace(fig,
+          data      = sub,
+          x         = ~C,
+          y         = ~mean_risk,
+          type      = "scatter",
+          mode      = "lines+markers",
+          name      = pol,
+          legendgroup  = pol,
+          showlegend   = first_leg,
+          visible      = is_default,
+          line         = list(color = POL_COLORS[pol], width = 2.5),
+          marker       = list(color = POL_COLORS[pol], size = 6),
+          hovertemplate = paste0(
+            "<b>", pol, "</b><br>C = %{x}<br>Risco = %{y:.4g}<extra></extra>"
+          )
+        )
+      }
     }
   }
-  p_supr <- layout(p_supr,
-    title=list(text="Taxa de Supressão de Canal (média das 4 rotas)",
-               font=list(color=TEXT, size=12)),
-    xaxis=list(title="Capacidade C", color=AXIS, gridcolor=GRID,
-               tickvals=C_TICKS, zeroline=FALSE),
-    yaxis=list(title="Supressão", color=AXIS, gridcolor=GRID,
-               tickformat=".0%", zeroline=FALSE),
-    shapes=list(
-      list(type="line", x0=min(C_TICKS), x1=max(C_TICKS),
-           y0=1-QOS_TARGET, y1=1-QOS_TARGET,
-           line=list(color="#ff6b6b", dash="dash", width=1.5)),
-      list(type="line", x0=min(C_TICKS), x1=max(C_TICKS),
-           y0=0.10, y1=0.10,
-           line=list(color="#ffa94d", dash="dot", width=1.2))
+
+  fig <- layout(fig,
+    xaxis  = list(
+      title      = "Capacidade C (drones simultâneos)",
+      color      = AXIS, gridcolor = GRID,
+      tickvals   = C_TICKS, zeroline = FALSE
     ),
-    annotations=list(
-      list(x=min(C_TICKS), y=1-QOS_TARGET+0.013, showarrow=FALSE,
-           text=paste0("QoS target (", round((1-QOS_TARGET)*100), "%)"),
-           font=list(color="#ff6b6b", size=9)),
-      list(x=min(C_TICKS), y=0.115, showarrow=FALSE,
-           text="10% alerta", font=list(color="#ffa94d", size=9))
+    yaxis  = list(
+      title    = "Risco médio total",
+      color    = AXIS, gridcolor = GRID, zeroline = FALSE
     ),
-    plot_bgcolor=PANEL, paper_bgcolor=BG, font=list(color=TEXT, size=10),
-    legend=list(font=list(color=TEXT, size=9), bgcolor=BG),
-    margin=list(l=65, r=10, t=45, b=45), hovermode="x unified"
-  ) |> config(displayModeBar=FALSE)
+    plot_bgcolor  = PANEL,
+    paper_bgcolor = BG,
+    font          = list(color = TEXT, size = 11),
+    legend        = list(
+      font        = list(color = TEXT, size = 10),
+      bgcolor     = BG,
+      title       = list(text = "Política", font = list(color = AXIS, size = 10))
+    ),
+    margin    = list(l = 70, r = 20, t = 16, b = 55),
+    hovermode = "x unified"
+  ) |> config(displayModeBar = FALSE)
 
-  k_needed <- d |>
-    group_by(C, policy, scenario) |>
-    summarise(
-      k_min = { ok <- K[channel_util >= QOS_TARGET]
-                if (length(ok) > 0) min(ok) else NA_real_ },
-      .groups = "drop"
-    ) |>
-    group_by(C, policy) |>
-    summarise(k_min = mean(k_min, na.rm=TRUE), .groups="drop")
+  # JavaScript: constrói barra de filtros e gerencia visibility das traces
+  js <- "
+function(el, data) {
+  var meta      = data.meta;
+  var scenarios = data.scenarios;
+  var kVals     = data.kVals;
+  var curSc     = scenarios[0];
+  var curK      = kVals[0];
 
-  k_max_avail <- max(d$K)
-
-  p_kmin <- plot_ly()
-  for (pol in pols_all) {
-    d2 <- filter(k_needed, policy==pol)
-    if (!nrow(d2)) next
-    p_kmin <- add_trace(p_kmin,
-      data=d2, x=~C, y=~k_min, type="scatter", mode="lines+markers", name=pol,
-      line=list(color=POL_COLORS[pol], width=2),
-      marker=list(color=POL_COLORS[pol], size=5),
-      hovertemplate=paste0("<b>",pol,"</b><br>C=%{x}<br>K mín=%{y:.1f}<extra></extra>")
-    )
+  function updateVis() {
+    var vis = meta.map(function(m) { return m.sc === curSc && m.k === curK; });
+    Plotly.restyle(el, { visible: vis });
+    refreshBtns();
   }
-  p_kmin <- layout(p_kmin,
-    title=list(text=sprintf("K mínimo para canal ≥ %.0f%% (média 4 rotas)", QOS_TARGET*100),
-               font=list(color=TEXT, size=12)),
-    xaxis=list(title="Capacidade C", color=AXIS, gridcolor=GRID,
-               tickvals=C_TICKS, zeroline=FALSE),
-    yaxis=list(title="K necessário", color=AXIS, gridcolor=GRID, zeroline=FALSE,
-               tickvals=k_all, ticktext=paste0("K=", k_all)),
-    shapes=list(list(type="line", x0=min(C_TICKS), x1=max(C_TICKS),
-      y0=k_max_avail, y1=k_max_avail,
-      line=list(color="#51cf66", dash="dash", width=1.5))),
-    annotations=list(list(x=min(C_TICKS), y=k_max_avail+0.15, showarrow=FALSE,
-      text=paste0("K disponível = ", k_max_avail),
-      font=list(color="#51cf66", size=9))),
-    plot_bgcolor=PANEL, paper_bgcolor=BG, font=list(color=TEXT, size=10),
-    legend=list(font=list(color=TEXT, size=9), bgcolor=BG),
-    margin=list(l=65, r=10, t=45, b=45)
-  ) |> config(displayModeBar=FALSE)
 
-  hm <- d |>
-    group_by(K, C) |>
-    summarise(util=mean(channel_util, na.rm=TRUE), .groups="drop")
+  function refreshBtns() {
+    el.parentElement.querySelectorAll('[data-sc]').forEach(function(b) {
+      var on = b.dataset.sc === curSc;
+      b.style.background = on ? '#378ADD' : '#1a1a2e';
+      b.style.color      = on ? '#ffffff' : '#a6adc8';
+      b.style.borderColor = on ? '#378ADD' : '#3a3a5a';
+    });
+    el.parentElement.querySelectorAll('[data-k]').forEach(function(b) {
+      var on = parseInt(b.dataset.k) === curK;
+      b.style.background = on ? '#F4A261' : '#1a1a2e';
+      b.style.color      = on ? '#ffffff' : '#a6adc8';
+      b.style.borderColor = on ? '#F4A261' : '#3a3a5a';
+    });
+  }
 
-  p_hmap <- plot_ly(hm,
-    x=~C, y=~factor(K, levels=k_all), z=~util,
-    type="heatmap",
-    colorscale=list(c(0,"#c0392b"), c(QOS_TARGET,"#f39c12"), c(1,"#1D9E75")),
-    zmin=0, zmax=1,
-    hovertemplate="K=%{y}  C=%{x}<br>Util=%{z:.1%}<extra></extra>",
-    colorbar=list(title=list(text="Util.<br>canal", font=list(color=TEXT)),
-                  tickformat=".0%", font=list(color=TEXT),
-                  bgcolor=BG, bordercolor=GRID)
-  ) |>
-    layout(
-      title=list(text="Mapa K × C: utilização do canal (média políticas e rotas)",
-                 font=list(color=TEXT, size=12)),
-      xaxis=list(title="Capacidade C", color=AXIS, tickvals=C_TICKS),
-      yaxis=list(title="K (slots/época)", color=AXIS),
-      plot_bgcolor=PANEL, paper_bgcolor=BG, font=list(color=TEXT, size=10),
-      margin=list(l=65, r=10, t=45, b=45)
-    ) |> config(displayModeBar=FALSE)
+  function mkBtn(label, active, accent) {
+    var b = document.createElement('button');
+    b.textContent = label;
+    b.style.cssText =
+      'background:' + (active ? accent : '#1a1a2e') + ';' +
+      'color:'       + (active ? '#fff' : '#a6adc8') + ';' +
+      'border:1px solid ' + (active ? accent : '#3a3a5a') + ';' +
+      'border-radius:5px;padding:4px 11px;font-size:11px;' +
+      'cursor:pointer;transition:all .15s;white-space:nowrap;';
+    return b;
+  }
 
-  list(supr=p_supr, kmin=p_kmin, hmap=p_hmap)
+  function mkLabel(txt) {
+    var s = document.createElement('span');
+    s.textContent = txt;
+    s.style.cssText =
+      'color:#6a6a8a;font-size:10px;letter-spacing:.08em;' +
+      'text-transform:uppercase;white-space:nowrap;align-self:center;';
+    return s;
+  }
+
+  function mkSep() {
+    var d = document.createElement('div');
+    d.style.cssText = 'width:1px;background:#2a2a4a;align-self:stretch;margin:0 2px;';
+    return d;
+  }
+
+  // Barra de filtros
+  var bar = document.createElement('div');
+  bar.style.cssText =
+    'display:flex;flex-wrap:wrap;gap:8px 14px;' +
+    'padding:9px 14px;margin-bottom:8px;' +
+    'background:#0d0d18;border-radius:7px;align-items:center;';
+
+  // Cenário
+  bar.appendChild(mkLabel('Cenário'));
+  var scGrp = document.createElement('div');
+  scGrp.style.cssText = 'display:flex;gap:5px;flex-wrap:wrap;';
+  scenarios.forEach(function(sc) {
+    var btn = mkBtn(sc === 'Todos' ? 'Todos (média)' : sc, sc === curSc, '#378ADD');
+    btn.dataset.sc = sc;
+    btn.onclick = function() { curSc = sc; updateVis(); };
+    scGrp.appendChild(btn);
+  });
+  bar.appendChild(scGrp);
+
+  bar.appendChild(mkSep());
+
+  // K
+  bar.appendChild(mkLabel('K slots/época'));
+  var kGrp = document.createElement('div');
+  kGrp.style.cssText = 'display:flex;gap:5px;flex-wrap:wrap;';
+  kVals.forEach(function(k) {
+    var btn = mkBtn('K = ' + k, k === curK, '#F4A261');
+    btn.dataset.k = k;
+    btn.onclick = function() { curK = k; updateVis(); };
+    kGrp.appendChild(btn);
+  });
+  bar.appendChild(kGrp);
+
+  el.parentElement.insertBefore(bar, el);
+}
+"
+
+  onRender(fig, js, data = list(
+    meta      = trace_meta,
+    scenarios = scenarios,
+    kVals     = as.integer(k_vals)
+  ))
 }
 
-# ── Build tab completo para um experimento ───────────────────────────────────
+# ── Monta tabs por experimento ────────────────────────────────────────────────
 build_exp_tab <- function(exp_name, exp_df) {
-  uid  <- gsub("[^a-zA-Z0-9]", "_", exp_name)
-  hl   <- get_exp_highlight(exp_name)
-  pols <- intersect(names(POL_COLORS), unique(exp_df$policy))
-  sp   <- make_supr_plots(exp_df)
-
   nav_panel(
     get_exp_label(exp_name),
-    navset_tab(
-      nav_panel("Geral",    show_plots(exp_df)),
-      nav_panel("Risk Gap",
-        p(style="color:#a6adc8; font-size:0.85em; margin:4px 0 8px;",
-          HTML(paste0("round-robin = 1.0 (baseline). ",
-               "Curvas em destaque: <b>",
-               paste(hl, collapse="</b>, <b>"), "</b>."))),
-        make_risk_gap(exp_df, hl)
-      ),
-      nav_panel("Demanda Suprimida",
-        p(style="color:#a6adc8; font-size:0.85em; margin:4px 0 8px;",
-          HTML(sprintf(paste0("QoS target: util. canal ≥ %.0f%%. ",
-               "Traços por K: — sólido · -- dash · ··· dot · -·- dashdot."),
-               QOS_TARGET*100))),
-        sp$supr,
-        div(style="display:flex; gap:12px; margin-top:8px;",
-          div(style="flex:1;", sp$kmin),
-          div(style="flex:1;", sp$hmap)
-        )
-      ),
-      nav_panel("A★ · 1 rota",     scene_panel("1r_astar",  exp_df, uid)),
-      nav_panel("A★ · 2 rotas",    scene_panel("2r_astar",  exp_df, uid)),
-      nav_panel("Static · 1 rota", scene_panel("1r_static", exp_df, uid)),
-      nav_panel("Static · 2 rotas",scene_panel("2r_static", exp_df, uid)),
-      id = paste0("tabs_", uid)
+    div(style = "padding:10px 4px 0;",
+      build_risk_chart(exp_df)
     )
   )
 }
 ```
 
-> **`r nrow(df)` runs** carregados · K ∈ {`r paste(sort(unique(df$K)), collapse=", ")`} · C `r min(df$C)`–`r max(df$C)` · `r length(unique(df$experiment))` experimentos · `r length(unique(df$policy))` políticas distintas · clique na legenda para filtrar.
+> **`r nrow(df)` runs** · K ∈ {`r paste(sort(unique(df$K)), collapse=", ")`} · C `r min(df$C)`–`r max(df$C)` · `r length(unique(df$experiment))` experimentos · `r length(unique(df$policy))` políticas
 
-```{r main-tabs}
+```{r tabs}
 experiments <- unique(df$experiment)
-top_panels  <- lapply(experiments, function(exp) {
-  build_exp_tab(exp, filter(df, experiment == exp))
+top_panels  <- lapply(experiments, function(e) {
+  build_exp_tab(e, filter(df, experiment == e))
 })
 do.call(navset_tab, c(top_panels, list(id = "exp_tabs")))
 ```
