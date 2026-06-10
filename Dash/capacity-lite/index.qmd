@@ -29,7 +29,7 @@ format:
           });
 
           var ctr  = document.getElementById('risk-ctr-' + uid);
-          var pdiv = ctr ? ctr.querySelector('.plotly-graph-div') : null;
+          var pdiv = ctr ? ctr.querySelector('.js-plotly-plot') : null;
           if (pdiv && pdiv._fullLayout) {
             Plotly.restyle(pdiv, { visible: vis });
           }
@@ -56,7 +56,7 @@ format:
                  || ('#' + e.target.getAttribute('aria-controls'));
           var pane = sel ? document.querySelector(sel) : null;
           if (!pane) return;
-          pane.querySelectorAll('.plotly-graph-div').forEach(function(d) {
+          pane.querySelectorAll('.js-plotly-plot').forEach(function(d) {
             if (d._fullLayout) Plotly.Plots.resize(d);
           });
         });
