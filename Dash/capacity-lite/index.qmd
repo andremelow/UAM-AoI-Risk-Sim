@@ -6,6 +6,56 @@ format:
     theme: darkly
     page-layout: full
     self-contained: true
+    include-after-body:
+      text: |
+        <script>
+        /* ── Estado global por tab ─────────────────────────────────────── */
+        window.riskMeta  = {};   /* uid → [{sc, k, pol}, …]  */
+        window.riskState = {};   /* uid → {sc, k}            */
+
+        /* Chamado pelos botões de filtro */
+        function riskFilter(uid, dim, val) {
+          var s = window.riskState[uid];
+          if (dim === 'sc') s.sc = val;
+          else              s.k  = parseInt(val);
+
+          var meta = window.riskMeta[uid];
+          var vis  = meta.map(function(m) {
+            return m.sc === s.sc && m.k === s.k;
+          });
+
+          var ctr  = document.getElementById('risk-ctr-' + uid);
+          var pdiv = ctr.querySelector('.plotly-graph-div');
+          if (pdiv && pdiv._fullLayout) {
+            Plotly.restyle(pdiv, { visible: vis });
+          }
+
+          ctr.querySelectorAll('[data-sc]').forEach(function(b) {
+            _btnActive(b, b.dataset.sc === s.sc, '#378ADD');
+          });
+          ctr.querySelectorAll('[data-k]').forEach(function(b) {
+            _btnActive(b, parseInt(b.dataset.k) === s.k, '#F4A261');
+          });
+        }
+
+        function _btnActive(b, on, accent) {
+          b.style.background  = on ? accent   : '#1a1a2e';
+          b.style.color       = on ? '#ffffff' : '#a6adc8';
+          b.style.borderColor = on ? accent   : '#3a3a5a';
+        }
+
+        /* Resize plotly quando o tab fica visível (corrige render em display:none) */
+        document.addEventListener('shown.bs.tab', function(e) {
+          var target = e.target.getAttribute('data-bs-target')
+                    || ('#' + e.target.getAttribute('aria-controls'));
+          if (!target) return;
+          var pane = document.querySelector(target);
+          if (!pane) return;
+          pane.querySelectorAll('.plotly-graph-div').forEach(function(d) {
+            if (d._fullLayout) Plotly.Plots.resize(d);
+          });
+        });
+        </script>
 execute:
   echo: false
   warning: false
@@ -17,7 +67,7 @@ library(dplyr)
 library(plotly)
 library(bslib)
 library(htmltools)
-library(htmlwidgets)
+library(jsonlite)
 
 df <- read.csv("data/capacity_summary.csv", stringsAsFactors = FALSE)
 
@@ -43,13 +93,31 @@ EXP_LABELS <- c(
 )
 get_exp_label <- function(e) { l <- EXP_LABELS[[e]]; if (is.null(l)) e else l }
 
-# ── Filtro + gráfico de risco ─────────────────────────────────────────────────
-#
-#  Gera um gráfico plotly com filtros interativos (Cenário × K) embutidos via
-#  JavaScript. Cada combinação (cenário, K, política) é uma trace separada;
-#  o JS atualiza visibility quando o usuário clica nos botões.
-#
-build_risk_chart <- function(d) {
+# ── Helpers para botões HTML ──────────────────────────────────────────────────
+.btn_style <- function(active, accent) {
+  bg  <- if (active) accent   else "#1a1a2e"
+  col <- if (active) "#ffffff" else "#a6adc8"
+  brd <- if (active) accent   else "#3a3a5a"
+  paste0(
+    "background:", bg, ";color:", col, ";border:1px solid ", brd, ";",
+    "border-radius:5px;padding:4px 11px;font-size:11px;cursor:pointer;",
+    "transition:all .15s;white-space:nowrap;"
+  )
+}
+.lbl <- function(txt) {
+  tags$span(txt,
+    style = paste0(
+      "color:#6a6a8a;font-size:10px;letter-spacing:.08em;",
+      "text-transform:uppercase;white-space:nowrap;align-self:center;"
+    )
+  )
+}
+.sep <- function() {
+  tags$div(style="width:1px;background:#2a2a4a;align-self:stretch;margin:0 2px;")
+}
+
+# ── Constrói gráfico + barra de filtros para um experimento ──────────────────
+build_risk_chart <- function(d, uid) {
   pols_exp <- intersect(names(POL_COLORS), unique(d$policy))
 
   # Agrega: (cenário, K, C, política) → risco médio
@@ -57,7 +125,7 @@ build_risk_chart <- function(d) {
     group_by(scenario, K, C, policy) |>
     summarise(mean_risk = mean(mean_risk, na.rm = TRUE), .groups = "drop")
 
-  # "Todos": média sobre cenários
+  # Adiciona "Todos": média sobre cenários
   df_avg <- df_sc |>
     group_by(K, C, policy) |>
     summarise(mean_risk = mean(mean_risk, na.rm = TRUE), .groups = "drop") |>
@@ -70,8 +138,9 @@ build_risk_chart <- function(d) {
   default_sc <- "Todos"
   default_k  <- k_vals[1]
 
+  # ── Traces plotly ─────────────────────────────────────────────────────────
   fig        <- plot_ly()
-  trace_meta <- list()
+  trace_meta <- vector("list", 0)
   seen_pols  <- character(0)
 
   for (sc in scenarios) {
@@ -91,17 +160,17 @@ build_risk_chart <- function(d) {
         )
 
         fig <- add_trace(fig,
-          data      = sub,
-          x         = ~C,
-          y         = ~mean_risk,
-          type      = "scatter",
-          mode      = "lines+markers",
-          name      = pol,
-          legendgroup  = pol,
-          showlegend   = first_leg,
-          visible      = is_default,
-          line         = list(color = POL_COLORS[pol], width = 2.5),
-          marker       = list(color = POL_COLORS[pol], size = 6),
+          data          = sub,
+          x             = ~C,
+          y             = ~mean_risk,
+          type          = "scatter",
+          mode          = "lines+markers",
+          name          = pol,
+          legendgroup   = pol,
+          showlegend    = first_leg,
+          visible       = is_default,
+          line          = list(color = POL_COLORS[pol], width = 2.5),
+          marker        = list(color = POL_COLORS[pol], size  = 6),
           hovertemplate = paste0(
             "<b>", pol, "</b><br>C = %{x}<br>Risco = %{y:.4g}<extra></extra>"
           )
@@ -112,134 +181,80 @@ build_risk_chart <- function(d) {
 
   fig <- layout(fig,
     xaxis  = list(
-      title      = "Capacidade C (drones simultâneos)",
-      color      = AXIS, gridcolor = GRID,
-      tickvals   = C_TICKS, zeroline = FALSE
+      title    = "Capacidade C (drones simultâneos)",
+      color    = AXIS, gridcolor = GRID,
+      tickvals = C_TICKS, zeroline = FALSE
     ),
     yaxis  = list(
-      title    = "Risco médio total",
-      color    = AXIS, gridcolor = GRID, zeroline = FALSE
+      title  = "Risco médio total",
+      color  = AXIS, gridcolor = GRID, zeroline = FALSE
     ),
     plot_bgcolor  = PANEL,
     paper_bgcolor = BG,
     font          = list(color = TEXT, size = 11),
     legend        = list(
-      font        = list(color = TEXT, size = 10),
-      bgcolor     = BG,
-      title       = list(text = "Política", font = list(color = AXIS, size = 10))
+      font  = list(color = TEXT, size = 10),
+      bgcolor = BG,
+      title   = list(text = "Política", font = list(color = AXIS, size = 10))
     ),
     margin    = list(l = 70, r = 20, t = 16, b = 55),
     hovermode = "x unified"
   ) |> config(displayModeBar = FALSE)
 
-  # JavaScript: constrói barra de filtros e gerencia visibility das traces
-  js <- "
-function(el, data) {
-  var meta      = data.meta;
-  var scenarios = data.scenarios;
-  var kVals     = data.kVals;
-  var curSc     = scenarios[0];
-  var curK      = kVals[0];
+  # ── Barra de filtros (HTML puro) ──────────────────────────────────────────
+  sc_btns <- lapply(scenarios, function(sc) {
+    lbl <- if (sc == "Todos") "Todos (média)" else sc
+    tags$button(lbl,
+      `data-sc` = sc,
+      onclick   = sprintf("riskFilter('%s','sc','%s')", uid, sc),
+      style     = .btn_style(sc == default_sc, "#378ADD")
+    )
+  })
 
-  function updateVis() {
-    var vis = meta.map(function(m) { return m.sc === curSc && m.k === curK; });
-    Plotly.restyle(el, { visible: vis });
-    refreshBtns();
-  }
+  k_btns <- lapply(k_vals, function(k) {
+    tags$button(paste0("K = ", k),
+      `data-k` = k,
+      onclick   = sprintf("riskFilter('%s','k',%d)", uid, as.integer(k)),
+      style     = .btn_style(k == default_k, "#F4A261")
+    )
+  })
 
-  function refreshBtns() {
-    el.parentElement.querySelectorAll('[data-sc]').forEach(function(b) {
-      var on = b.dataset.sc === curSc;
-      b.style.background = on ? '#378ADD' : '#1a1a2e';
-      b.style.color      = on ? '#ffffff' : '#a6adc8';
-      b.style.borderColor = on ? '#378ADD' : '#3a3a5a';
-    });
-    el.parentElement.querySelectorAll('[data-k]').forEach(function(b) {
-      var on = parseInt(b.dataset.k) === curK;
-      b.style.background = on ? '#F4A261' : '#1a1a2e';
-      b.style.color      = on ? '#ffffff' : '#a6adc8';
-      b.style.borderColor = on ? '#F4A261' : '#3a3a5a';
-    });
-  }
+  filter_bar <- tags$div(
+    style = paste0(
+      "display:flex;flex-wrap:wrap;gap:8px 14px;",
+      "padding:9px 14px;margin-bottom:8px;",
+      "background:#0d0d18;border-radius:7px;align-items:center;"
+    ),
+    .lbl("Cenário"),
+    tags$div(style = "display:flex;gap:5px;flex-wrap:wrap;", sc_btns),
+    .sep(),
+    .lbl("K slots/época"),
+    tags$div(style = "display:flex;gap:5px;flex-wrap:wrap;", k_btns)
+  )
 
-  function mkBtn(label, active, accent) {
-    var b = document.createElement('button');
-    b.textContent = label;
-    b.style.cssText =
-      'background:' + (active ? accent : '#1a1a2e') + ';' +
-      'color:'       + (active ? '#fff' : '#a6adc8') + ';' +
-      'border:1px solid ' + (active ? accent : '#3a3a5a') + ';' +
-      'border-radius:5px;padding:4px 11px;font-size:11px;' +
-      'cursor:pointer;transition:all .15s;white-space:nowrap;';
-    return b;
-  }
+  # ── Script com metadados da trace (injeta estado global) ──────────────────
+  meta_js <- tags$script(HTML(sprintf(
+    "window.riskMeta['%s']  = %s;\nwindow.riskState['%s'] = {sc:'Todos', k:%d};",
+    uid, toJSON(trace_meta, auto_unbox = TRUE),
+    uid, as.integer(default_k)
+  )))
 
-  function mkLabel(txt) {
-    var s = document.createElement('span');
-    s.textContent = txt;
-    s.style.cssText =
-      'color:#6a6a8a;font-size:10px;letter-spacing:.08em;' +
-      'text-transform:uppercase;white-space:nowrap;align-self:center;';
-    return s;
-  }
-
-  function mkSep() {
-    var d = document.createElement('div');
-    d.style.cssText = 'width:1px;background:#2a2a4a;align-self:stretch;margin:0 2px;';
-    return d;
-  }
-
-  // Barra de filtros
-  var bar = document.createElement('div');
-  bar.style.cssText =
-    'display:flex;flex-wrap:wrap;gap:8px 14px;' +
-    'padding:9px 14px;margin-bottom:8px;' +
-    'background:#0d0d18;border-radius:7px;align-items:center;';
-
-  // Cenário
-  bar.appendChild(mkLabel('Cenário'));
-  var scGrp = document.createElement('div');
-  scGrp.style.cssText = 'display:flex;gap:5px;flex-wrap:wrap;';
-  scenarios.forEach(function(sc) {
-    var btn = mkBtn(sc === 'Todos' ? 'Todos (média)' : sc, sc === curSc, '#378ADD');
-    btn.dataset.sc = sc;
-    btn.onclick = function() { curSc = sc; updateVis(); };
-    scGrp.appendChild(btn);
-  });
-  bar.appendChild(scGrp);
-
-  bar.appendChild(mkSep());
-
-  // K
-  bar.appendChild(mkLabel('K slots/época'));
-  var kGrp = document.createElement('div');
-  kGrp.style.cssText = 'display:flex;gap:5px;flex-wrap:wrap;';
-  kVals.forEach(function(k) {
-    var btn = mkBtn('K = ' + k, k === curK, '#F4A261');
-    btn.dataset.k = k;
-    btn.onclick = function() { curK = k; updateVis(); };
-    kGrp.appendChild(btn);
-  });
-  bar.appendChild(kGrp);
-
-  el.parentElement.insertBefore(bar, el);
-}
-"
-
-  onRender(fig, js, data = list(
-    meta      = trace_meta,
-    scenarios = scenarios,
-    kVals     = as.integer(k_vals)
-  ))
+  # ── Container identificado para riskFilter() ─────────────────────────────
+  tags$div(
+    id    = paste0("risk-ctr-", uid),
+    style = "padding:10px 4px 0;",
+    filter_bar,
+    meta_js,
+    fig
+  )
 }
 
-# ── Monta tabs por experimento ────────────────────────────────────────────────
+# ── Tab por experimento ───────────────────────────────────────────────────────
 build_exp_tab <- function(exp_name, exp_df) {
+  uid <- gsub("[^a-zA-Z0-9]", "_", exp_name)
   nav_panel(
     get_exp_label(exp_name),
-    div(style = "padding:10px 4px 0;",
-      build_risk_chart(exp_df)
-    )
+    build_risk_chart(exp_df, uid)
   )
 }
 ```
