@@ -7127,8 +7127,11 @@ function riskFilter(uid, dim, val) {
   else              s.k  = parseInt(val);
 
   var meta = window.riskMeta[uid];
-  var vis  = meta.map(function(m) {
-    return m.sc === s.sc && m.k === s.k;
+  var legIdx = {};
+  meta.forEach(function(m, i) { if (legIdx[m.pol] === undefined) legIdx[m.pol] = i; });
+  var vis  = meta.map(function(m, i) {
+    if (m.sc === s.sc && m.k === s.k) return true;
+    return legIdx[m.pol] === i ? 'legendonly' : false;
   });
 
   var ctr  = document.getElementById('risk-ctr-' + uid);
