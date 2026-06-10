@@ -1,21 +1,25 @@
 ---
 title: "UAM Capacity · Risco vs Capacidade"
-subtitle: "Corredor Interlagos — sweep K × C × routing × policy"
+subtitle: "Interlagos — sw vs nsw — sweep K × C × routing × policy"
 format:
   html:
     theme: darkly
     page-layout: full
     self-contained: true
+    include-in-header:
+      text: |
+        <script>
+        /* Inicializa ANTES do corpo para que os <script> de metadados
+           possam preencher os objetos sem erros de undefined. */
+        window.riskMeta  = {};
+        window.riskState = {};
+        </script>
     include-after-body:
       text: |
         <script>
-        /* ── Estado global por tab ─────────────────────────────────────── */
-        window.riskMeta  = {};   /* uid → [{sc, k, pol}, …]  */
-        window.riskState = {};   /* uid → {sc, k}            */
-
-        /* Chamado pelos botões de filtro */
         function riskFilter(uid, dim, val) {
           var s = window.riskState[uid];
+          if (!s) return;
           if (dim === 'sc') s.sc = val;
           else              s.k  = parseInt(val);
 
@@ -25,31 +29,32 @@ format:
           });
 
           var ctr  = document.getElementById('risk-ctr-' + uid);
-          var pdiv = ctr.querySelector('.plotly-graph-div');
+          var pdiv = ctr ? ctr.querySelector('.plotly-graph-div') : null;
           if (pdiv && pdiv._fullLayout) {
             Plotly.restyle(pdiv, { visible: vis });
           }
 
-          ctr.querySelectorAll('[data-sc]').forEach(function(b) {
-            _btnActive(b, b.dataset.sc === s.sc, '#378ADD');
-          });
-          ctr.querySelectorAll('[data-k]').forEach(function(b) {
-            _btnActive(b, parseInt(b.dataset.k) === s.k, '#F4A261');
-          });
+          if (ctr) {
+            ctr.querySelectorAll('[data-sc]').forEach(function(b) {
+              _btnOn(b, b.dataset.sc === s.sc, '#378ADD');
+            });
+            ctr.querySelectorAll('[data-k]').forEach(function(b) {
+              _btnOn(b, parseInt(b.dataset.k) === s.k, '#F4A261');
+            });
+          }
         }
 
-        function _btnActive(b, on, accent) {
-          b.style.background  = on ? accent   : '#1a1a2e';
+        function _btnOn(b, on, accent) {
+          b.style.background  = on ? accent    : '#1a1a2e';
           b.style.color       = on ? '#ffffff' : '#a6adc8';
-          b.style.borderColor = on ? accent   : '#3a3a5a';
+          b.style.borderColor = on ? accent    : '#3a3a5a';
         }
 
-        /* Resize plotly quando o tab fica visível (corrige render em display:none) */
+        /* Resize plotly ao mostrar tab (resolve render em display:none) */
         document.addEventListener('shown.bs.tab', function(e) {
-          var target = e.target.getAttribute('data-bs-target')
-                    || ('#' + e.target.getAttribute('aria-controls'));
-          if (!target) return;
-          var pane = document.querySelector(target);
+          var sel = e.target.getAttribute('data-bs-target')
+                 || ('#' + e.target.getAttribute('aria-controls'));
+          var pane = sel ? document.querySelector(sel) : null;
           if (!pane) return;
           pane.querySelectorAll('.plotly-graph-div').forEach(function(d) {
             if (d._fullLayout) Plotly.Plots.resize(d);
@@ -65,20 +70,19 @@ execute:
 ```{r setup, include=FALSE}
 library(dplyr)
 library(plotly)
-library(bslib)
 library(htmltools)
 library(jsonlite)
 
-df <- read.csv("data/capacity_summary.csv", stringsAsFactors = FALSE)
+df_all <- read.csv("data/capacity_summary.csv", stringsAsFactors = FALSE)
+
+# Apenas experimento sw vs nsw
+df <- df_all[df_all$experiment == "capacity_15min_sw_nsw", ]
 
 POL_COLORS <- c(
   "round-robin"      = "#378ADD",
   "round-robin-sw"   = "#7db8e8",
   "pf-classic"       = "#D85A30",
   "pf-classic-sw"    = "#e8956a",
-  "aoi-pure"         = "#1D9E75",
-  "aoi-normalized"   = "#2DC4A0",
-  "risk-aware"       = "#7F77DD",
   "max-weight-drift" = "#F4A261",
   "max-weight-sw"    = "#f9c784"
 )
@@ -87,45 +91,38 @@ BG    <- "#1e1e2e"; PANEL <- "#13131f"
 TEXT  <- "#cdd6f4"; AXIS  <- "#a6adc8"; GRID  <- "#2a2a4a"
 C_TICKS <- sort(unique(df$C))
 
-EXP_LABELS <- c(
-  "capacity_15min"        = "15 min · original",
-  "capacity_15min_sw_nsw" = "15 min · sw vs nsw"
-)
-get_exp_label <- function(e) { l <- EXP_LABELS[[e]]; if (is.null(l)) e else l }
-
-# ── Helpers para botões HTML ──────────────────────────────────────────────────
-.btn_style <- function(active, accent) {
-  bg  <- if (active) accent   else "#1a1a2e"
+# ── Helpers HTML ──────────────────────────────────────────────────────────────
+.btn <- function(label, active, accent, onclick_str, ...) {
+  bg  <- if (active) accent    else "#1a1a2e"
   col <- if (active) "#ffffff" else "#a6adc8"
-  brd <- if (active) accent   else "#3a3a5a"
-  paste0(
-    "background:", bg, ";color:", col, ";border:1px solid ", brd, ";",
-    "border-radius:5px;padding:4px 11px;font-size:11px;cursor:pointer;",
-    "transition:all .15s;white-space:nowrap;"
-  )
-}
-.lbl <- function(txt) {
-  tags$span(txt,
-    style = paste0(
-      "color:#6a6a8a;font-size:10px;letter-spacing:.08em;",
-      "text-transform:uppercase;white-space:nowrap;align-self:center;"
+  brd <- if (active) accent    else "#3a3a5a"
+  tags$button(label, ...,
+    onclick = onclick_str,
+    style   = paste0(
+      "background:", bg, ";color:", col, ";border:1px solid ", brd, ";",
+      "border-radius:5px;padding:4px 12px;font-size:11px;",
+      "cursor:pointer;transition:all .15s;white-space:nowrap;"
     )
   )
 }
-.sep <- function() {
-  tags$div(style="width:1px;background:#2a2a4a;align-self:stretch;margin:0 2px;")
-}
+.lbl <- function(txt) tags$span(txt, style = paste0(
+  "color:#6a6a8a;font-size:10px;letter-spacing:.08em;",
+  "text-transform:uppercase;white-space:nowrap;align-self:center;"
+))
+.sep <- function() tags$div(style =
+  "width:1px;background:#2a2a4a;align-self:stretch;margin:0 4px;"
+)
 
-# ── Constrói gráfico + barra de filtros para um experimento ──────────────────
+# ── Gráfico de risco com filtros ──────────────────────────────────────────────
 build_risk_chart <- function(d, uid) {
   pols_exp <- intersect(names(POL_COLORS), unique(d$policy))
 
-  # Agrega: (cenário, K, C, política) → risco médio
+  # (cenário, K, C, política) → risco médio
   df_sc <- d |>
     group_by(scenario, K, C, policy) |>
     summarise(mean_risk = mean(mean_risk, na.rm = TRUE), .groups = "drop")
 
-  # Adiciona "Todos": média sobre cenários
+  # "Todos": média entre cenários
   df_avg <- df_sc |>
     group_by(K, C, policy) |>
     summarise(mean_risk = mean(mean_risk, na.rm = TRUE), .groups = "drop") |>
@@ -134,11 +131,9 @@ build_risk_chart <- function(d, uid) {
   df_plot   <- bind_rows(df_sc, df_avg)
   scenarios <- c("Todos", sort(unique(df_sc$scenario)))
   k_vals    <- sort(unique(d$K))
+  default_k <- k_vals[1]
 
-  default_sc <- "Todos"
-  default_k  <- k_vals[1]
-
-  # ── Traces plotly ─────────────────────────────────────────────────────────
+  # ── Traces ────────────────────────────────────────────────────────────────
   fig        <- plot_ly()
   trace_meta <- vector("list", 0)
   seen_pols  <- character(0)
@@ -149,26 +144,19 @@ build_risk_chart <- function(d, uid) {
         sub <- filter(df_plot, scenario == sc, K == k, policy == pol)
         if (nrow(sub) == 0) next
 
-        is_default <- sc == default_sc && k == default_k
-        first_leg  <- !pol %in% seen_pols
+        is_def    <- sc == "Todos" && k == default_k
+        first_leg <- !pol %in% seen_pols
         if (first_leg) seen_pols <- c(seen_pols, pol)
 
-        trace_meta[[length(trace_meta) + 1]] <- list(
-          sc  = sc,
-          k   = as.integer(k),
-          pol = pol
-        )
+        trace_meta[[length(trace_meta) + 1]] <-
+          list(sc = sc, k = as.integer(k), pol = pol)
 
         fig <- add_trace(fig,
-          data          = sub,
-          x             = ~C,
-          y             = ~mean_risk,
-          type          = "scatter",
-          mode          = "lines+markers",
-          name          = pol,
-          legendgroup   = pol,
+          data          = sub, x = ~C, y = ~mean_risk,
+          type          = "scatter", mode = "lines+markers",
+          name          = pol, legendgroup = pol,
           showlegend    = first_leg,
-          visible       = is_default,
+          visible       = is_def,
           line          = list(color = POL_COLORS[pol], width = 2.5),
           marker        = list(color = POL_COLORS[pol], size  = 6),
           hovertemplate = paste0(
@@ -180,51 +168,38 @@ build_risk_chart <- function(d, uid) {
   }
 
   fig <- layout(fig,
-    xaxis  = list(
-      title    = "Capacidade C (drones simultâneos)",
-      color    = AXIS, gridcolor = GRID,
-      tickvals = C_TICKS, zeroline = FALSE
-    ),
-    yaxis  = list(
-      title  = "Risco médio total",
-      color  = AXIS, gridcolor = GRID, zeroline = FALSE
-    ),
-    plot_bgcolor  = PANEL,
-    paper_bgcolor = BG,
+    xaxis  = list(title = "Capacidade C (drones simultâneos)",
+                  color = AXIS, gridcolor = GRID,
+                  tickvals = C_TICKS, zeroline = FALSE),
+    yaxis  = list(title = "Risco médio total",
+                  color = AXIS, gridcolor = GRID, zeroline = FALSE),
+    plot_bgcolor  = PANEL, paper_bgcolor = BG,
     font          = list(color = TEXT, size = 11),
-    legend        = list(
-      font  = list(color = TEXT, size = 10),
-      bgcolor = BG,
-      title   = list(text = "Política", font = list(color = AXIS, size = 10))
-    ),
+    legend        = list(font    = list(color = TEXT, size = 10),
+                         bgcolor = BG,
+                         title   = list(text = "Política",
+                                        font = list(color = AXIS, size = 10))),
     margin    = list(l = 70, r = 20, t = 16, b = 55),
     hovermode = "x unified"
   ) |> config(displayModeBar = FALSE)
 
-  # ── Barra de filtros (HTML puro) ──────────────────────────────────────────
+  # ── Barra de filtros ──────────────────────────────────────────────────────
   sc_btns <- lapply(scenarios, function(sc) {
     lbl <- if (sc == "Todos") "Todos (média)" else sc
-    tags$button(lbl,
-      `data-sc` = sc,
-      onclick   = sprintf("riskFilter('%s','sc','%s')", uid, sc),
-      style     = .btn_style(sc == default_sc, "#378ADD")
-    )
+    .btn(lbl, sc == "Todos", "#378ADD",
+         sprintf("riskFilter('%s','sc','%s')", uid, sc),
+         `data-sc` = sc)
   })
-
   k_btns <- lapply(k_vals, function(k) {
-    tags$button(paste0("K = ", k),
-      `data-k` = k,
-      onclick   = sprintf("riskFilter('%s','k',%d)", uid, as.integer(k)),
-      style     = .btn_style(k == default_k, "#F4A261")
-    )
+    .btn(paste0("K = ", k), k == default_k, "#F4A261",
+         sprintf("riskFilter('%s','k',%d)", uid, as.integer(k)),
+         `data-k` = k)
   })
 
   filter_bar <- tags$div(
-    style = paste0(
-      "display:flex;flex-wrap:wrap;gap:8px 14px;",
-      "padding:9px 14px;margin-bottom:8px;",
-      "background:#0d0d18;border-radius:7px;align-items:center;"
-    ),
+    style = paste0("display:flex;flex-wrap:wrap;gap:8px 14px;",
+                   "padding:10px 16px;margin-bottom:10px;",
+                   "background:#0d0d18;border-radius:7px;align-items:center;"),
     .lbl("Cenário"),
     tags$div(style = "display:flex;gap:5px;flex-wrap:wrap;", sc_btns),
     .sep(),
@@ -232,39 +207,25 @@ build_risk_chart <- function(d, uid) {
     tags$div(style = "display:flex;gap:5px;flex-wrap:wrap;", k_btns)
   )
 
-  # ── Script com metadados da trace (injeta estado global) ──────────────────
-  meta_js <- tags$script(HTML(sprintf(
+  # ── Metadados injetados ANTES do chart (window.riskMeta já existe) ────────
+  meta_script <- tags$script(HTML(sprintf(
     "window.riskMeta['%s']  = %s;\nwindow.riskState['%s'] = {sc:'Todos', k:%d};",
     uid, toJSON(trace_meta, auto_unbox = TRUE),
     uid, as.integer(default_k)
   )))
 
-  # ── Container identificado para riskFilter() ─────────────────────────────
   tags$div(
     id    = paste0("risk-ctr-", uid),
-    style = "padding:10px 4px 0;",
+    style = "padding:6px 0 0;",
     filter_bar,
-    meta_js,
+    meta_script,
     fig
-  )
-}
-
-# ── Tab por experimento ───────────────────────────────────────────────────────
-build_exp_tab <- function(exp_name, exp_df) {
-  uid <- gsub("[^a-zA-Z0-9]", "_", exp_name)
-  nav_panel(
-    get_exp_label(exp_name),
-    build_risk_chart(exp_df, uid)
   )
 }
 ```
 
-> **`r nrow(df)` runs** · K ∈ {`r paste(sort(unique(df$K)), collapse=", ")`} · C `r min(df$C)`–`r max(df$C)` · `r length(unique(df$experiment))` experimentos · `r length(unique(df$policy))` políticas
+> **`r nrow(df)` runs** · políticas: `r paste(sort(unique(df$policy)), collapse=" · ")` · K ∈ {`r paste(sort(unique(df$K)), collapse=", ")`} · C `r min(df$C)`–`r max(df$C)`
 
-```{r tabs}
-experiments <- unique(df$experiment)
-top_panels  <- lapply(experiments, function(e) {
-  build_exp_tab(e, filter(df, experiment == e))
-})
-do.call(navset_tab, c(top_panels, list(id = "exp_tabs")))
+```{r chart}
+build_risk_chart(df, "sw_nsw")
 ```

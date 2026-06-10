@@ -4,6 +4,6 @@
     "href": "index.html",
     "title": "UAM Capacity · Risco vs Capacidade",
     "section": "",
-    "text": "1728 runs · K ∈ {1, 2, 4, 8, 16, 32} · C 2–64 · 2 experimentos · 9 políticas\n\n\n\n\n\n\n15 min · original\n\n\n15 min · sw vs nsw\n\n\n\n\n\n\nCenário\n\nTodos (média)\n1r_astar\n1r_static\n2r_astar\n2r_static\n\n\nK slots/época\n\nK = 1\nK = 2\nK = 4\nK = 8\nK = 16\nK = 32\n\n\n\n\n\n\n\n\n\n\nCenário\n\nTodos (média)\n1r_astar\n1r_static\n2r_astar\n2r_static\n\n\nK slots/época\n\nK = 1\nK = 2\nK = 4\nK = 8\nK = 16\nK = 32"
+    "text": "864 runs · políticas: max-weight-drift · max-weight-sw · pf-classic · pf-classic-sw · round-robin · round-robin-sw · K ∈ {1, 2, 4, 8, 16, 32} · C 2–64\n\n\n\n\n\nCenário\n\nTodos (média)\n1r_astar\n1r_static\n2r_astar\n2r_static\n\n\nK slots/época\n\nK = 1\nK = 2\nK = 4\nK = 8\nK = 16\nK = 32"
   }
 ]
