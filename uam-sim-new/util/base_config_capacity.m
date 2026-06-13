@@ -46,10 +46,9 @@ cfg.bw            = 20e6;
 cfg.thresholdSNR  = 5;
 
 % ---- AoI / scheduling weights -----------------------------------------
-w_sum        = 1.0 + 1.9e-3 + 10.0;
-cfg.w_unc    = 1.0    / w_sum;
-cfg.w_map    = 1.9e-3 / w_sum;
-cfg.w_vid    = 10.0   / w_sum;
+cfg.w_unc    = 1/3;
+cfg.w_map    = 1/3;
+cfg.w_vid    = 1/3;
 cfg.r_min    = 10;
 cfg.k_aoi    = 0.5;
 cfg.tau_max  = 500;
