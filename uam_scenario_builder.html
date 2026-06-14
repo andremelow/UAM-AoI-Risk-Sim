@@ -608,14 +608,14 @@ function scheduleMapRender(){
 }
 
 // sim (north, east) [metres] ↔ geographic (lat, lon) [degrees]
-// Convention: sim North+ = canvas-down = geographic South (MATLAB imagesc orientation)
+// Convention: sim North+ = canvas-up = geographic North (standard geographic orientation)
 function simToGeo(north, east){
   const R=111319.9, cosLat=Math.cos(ORIGIN.lat*Math.PI/180);
-  return{lat: ORIGIN.lat - north/R, lon: ORIGIN.lon + east/(R*cosLat)};
+  return{lat: ORIGIN.lat + north/R, lon: ORIGIN.lon + east/(R*cosLat)};
 }
 function geoToSim(lat, lon){
   const R=111319.9, cosLat=Math.cos(ORIGIN.lat*Math.PI/180);
-  return{north:(ORIGIN.lat-lat)*R, east:(lon-ORIGIN.lon)*R*cosLat};
+  return{north:(lat-ORIGIN.lat)*R, east:(lon-ORIGIN.lon)*R*cosLat};
 }
 
 // Web Mercator tile ↔ geographic
