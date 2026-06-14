@@ -462,7 +462,7 @@ canvas#map{flex:1;display:block;cursor:crosshair;background:#111827}
 //
 //  w2c(north, east) → canvas pixel {x, y}
 //      x = W2/2 + (east  − cx) * sc
-//      y = H/2  + (north − cy) * sc   ← North+ goes DOWN
+//      y = H/2  − (north − cy) * sc   ← North+ goes UP (geographic convention)
 //  c2w(cx, cy) → {north, east}
 // ═══════════════════════════════════════════════════════════════════
 
@@ -489,7 +489,7 @@ function w2c(north, east){
   const scE=W2/(W.emax-W.emin), scN=H/(W.nmax-W.nmin);
   const sc=Math.min(scE,scN)*S.view.scale;
   return{ x: W2/2 + (east  - S.view.cx)*sc,
-          y: H/2  + (north - S.view.cy)*sc,
+          y: H/2  - (north - S.view.cy)*sc,
           sc };
 }
 function c2w(cx,cy){
@@ -497,7 +497,7 @@ function c2w(cx,cy){
   const scE=W2/(W.emax-W.emin), scN=H/(W.nmax-W.nmin);
   const sc=Math.min(scE,scN)*S.view.scale;
   return{ east:  (cx - W2/2)/sc + S.view.cx,
-          north: (cy - H/2 )/sc + S.view.cy };
+          north: -(cy - H/2)/sc + S.view.cy };
 }
 
 // ── Tab switching ────────────────────────────────────────────────
@@ -857,10 +857,10 @@ function renderMap(){
   // Axis labels
   ctx.fillStyle='rgba(100,116,139,0.55)';
   ctx.font='10px sans-serif';
-  // East labels — horizontal axis (bottom)
+  // East labels — horizontal axis (bottom = South edge, nmin)
   ctx.textAlign='center';
   [-1200,-600,0,600,1200].forEach(e=>{
-    const p=w2c(W.nmax-60, e);
+    const p=w2c(W.nmin+60, e);
     ctx.fillText('E'+(e>=0?'+':'')+e, p.x, p.y);
   });
   // North labels — vertical axis (left)
@@ -869,11 +869,11 @@ function renderMap(){
     const p=w2c(n, W.emin+10);
     ctx.fillText('N'+(n>=0?'+':'')+n, p.x+55, p.y+4);
   });
-  // Compass: East→ horizontal, North↓ vertical
+  // Compass: East→ horizontal, North↑ vertical
   {
-    const c=w2c(W.nmin+55, W.emax-120);
+    const c=w2c(W.nmax-55, W.emax-120);
     ctx.fillStyle='rgba(100,116,139,0.8)'; ctx.font='bold 10px sans-serif'; ctx.textAlign='center';
-    ctx.fillText('E→  N↓', c.x, c.y);
+    ctx.fillText('E→  N↑', c.x, c.y);
   }
 }
 
@@ -914,7 +914,7 @@ canvas.addEventListener('mousemove',e=>{
     const scE=canvas.width/(W.emax-W.emin), scN=canvas.height/(W.nmax-W.nmin);
     const sc=Math.min(scE,scN)*S.view.scale;
     S.view.cx -= (e.offsetX-S.lastMouse.x)/sc;  // East pan
-    S.view.cy -= (e.offsetY-S.lastMouse.y)/sc;  // North pan
+    S.view.cy += (e.offsetY-S.lastMouse.y)/sc;  // North pan (inverted: canvas Y↓ = world N↓)
     S.lastMouse={x:e.offsetX,y:e.offsetY};
     renderMap();
   }
