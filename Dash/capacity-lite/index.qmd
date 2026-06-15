@@ -17,18 +17,23 @@ format:
     include-after-body:
       text: |
         <script>
+        /* Generic filter: each chart stores its own state under uid.
+           dim2 can be 'k' (filter by K, x=C) or 'c' (filter by C, x=K). */
         function riskFilter(uid, dim, val) {
           var s = window.riskState[uid];
           if (!s) return;
           if (dim === 'sc') s.sc = val;
-          else              s.k  = parseInt(val);
+          else if (dim === 'k') s.k = parseInt(val);
+          else if (dim === 'c') s.c = parseInt(val);
 
           var meta = window.riskMeta[uid];
           var vis     = [];
           var showleg = [];
           var seen    = {};
           meta.forEach(function(m) {
-            var active = (m.sc === s.sc && m.k === s.k);
+            var sc_ok  = (m.sc === s.sc);
+            var dim_ok = (s.dim2 === 'k') ? (m.k === s.k) : (m.c === s.c);
+            var active = sc_ok && dim_ok;
             var first  = active && !seen[m.pol];
             if (first) seen[m.pol] = true;
             vis.push(active ? true : false);
@@ -47,6 +52,9 @@ format:
             });
             ctr.querySelectorAll('[data-k]').forEach(function(b) {
               _btnOn(b, parseInt(b.dataset.k) === s.k, '#F4A261');
+            });
+            ctr.querySelectorAll('[data-c]').forEach(function(b) {
+              _btnOn(b, parseInt(b.dataset.c) === s.c, '#F4A261');
             });
           }
         }
@@ -105,6 +113,7 @@ POL_DASH <- c(
 BG    <- "#1e1e2e"; PANEL <- "#13131f"
 TEXT  <- "#cdd6f4"; AXIS  <- "#a6adc8"; GRID  <- "#2a2a4a"
 C_TICKS <- sort(unique(df$C))
+K_TICKS <- sort(unique(df$K))
 
 # ── Helpers HTML ──────────────────────────────────────────────────────────────
 .btn <- function(label, active, accent, onclick_str, ...) {
@@ -128,16 +137,14 @@ C_TICKS <- sort(unique(df$C))
   "width:1px;background:#2a2a4a;align-self:stretch;margin:0 4px;"
 )
 
-# ── Gráfico de risco com filtros ──────────────────────────────────────────────
+# ── Gráfico: eixo X = C, filtro por K ────────────────────────────────────────
 build_risk_chart <- function(d, uid) {
   pols_exp <- intersect(names(POL_COLORS), unique(d$policy))
 
-  # (cenário, K, C, política) → risco médio
   df_sc <- d |>
     group_by(scenario, K, C, policy) |>
     summarise(mean_risk = mean(mean_risk, na.rm = TRUE), .groups = "drop")
 
-  # "Todos": média entre cenários
   df_avg <- df_sc |>
     group_by(K, C, policy) |>
     summarise(mean_risk = mean(mean_risk, na.rm = TRUE), .groups = "drop") |>
@@ -148,7 +155,6 @@ build_risk_chart <- function(d, uid) {
   k_vals    <- sort(unique(d$K))
   default_k <- k_vals[1]
 
-  # ── Traces ────────────────────────────────────────────────────────────────
   fig        <- plot_ly()
   trace_meta <- vector("list", 0)
   seen_pols  <- character(0)
@@ -199,7 +205,6 @@ build_risk_chart <- function(d, uid) {
     hovermode = "x unified"
   ) |> config(displayModeBar = FALSE)
 
-  # ── Barra de filtros ──────────────────────────────────────────────────────
   sc_btns <- lapply(scenarios, function(sc) {
     lbl <- if (sc == "Todos") "Todos (média)" else sc
     .btn(lbl, sc == "Todos", "#378ADD",
@@ -223,11 +228,116 @@ build_risk_chart <- function(d, uid) {
     tags$div(style = "display:flex;gap:5px;flex-wrap:wrap;", k_btns)
   )
 
-  # ── Metadados injetados ANTES do chart (window.riskMeta já existe) ────────
   meta_script <- tags$script(HTML(sprintf(
-    "window.riskMeta['%s']  = %s;\nwindow.riskState['%s'] = {sc:'Todos', k:%d};",
+    "window.riskMeta['%s']  = %s;\nwindow.riskState['%s'] = {sc:'Todos', k:%d, dim2:'k'};",
     uid, toJSON(trace_meta, auto_unbox = TRUE),
     uid, as.integer(default_k)
+  )))
+
+  tags$div(
+    id    = paste0("risk-ctr-", uid),
+    style = "padding:6px 0 0;",
+    filter_bar,
+    meta_script,
+    fig
+  )
+}
+
+# ── Gráfico: eixo X = K, filtro por C ────────────────────────────────────────
+build_risk_chart_k <- function(d, uid) {
+  pols_exp <- intersect(names(POL_COLORS), unique(d$policy))
+
+  df_sc <- d |>
+    group_by(scenario, K, C, policy) |>
+    summarise(mean_risk = mean(mean_risk, na.rm = TRUE), .groups = "drop")
+
+  df_avg <- df_sc |>
+    group_by(K, C, policy) |>
+    summarise(mean_risk = mean(mean_risk, na.rm = TRUE), .groups = "drop") |>
+    mutate(scenario = "Todos")
+
+  df_plot   <- bind_rows(df_sc, df_avg)
+  scenarios <- c("Todos", sort(unique(df_sc$scenario)))
+  c_vals    <- sort(unique(d$C))
+  default_c <- c_vals[1]
+
+  fig        <- plot_ly()
+  trace_meta <- vector("list", 0)
+  seen_pols  <- character(0)
+
+  for (sc in scenarios) {
+    for (cv in c_vals) {
+      for (pol in pols_exp) {
+        sub <- filter(df_plot, scenario == sc, C == cv, policy == pol)
+        if (nrow(sub) == 0) next
+
+        is_def    <- sc == "Todos" && cv == default_c
+        first_leg <- !pol %in% seen_pols
+        if (first_leg) seen_pols <- c(seen_pols, pol)
+
+        trace_meta[[length(trace_meta) + 1]] <-
+          list(sc = sc, c = as.integer(cv), pol = pol, leg = first_leg)
+
+        fig <- add_trace(fig,
+          data          = sub, x = ~K, y = ~mean_risk,
+          type          = "scatter", mode = "lines+markers",
+          name          = pol,
+          showlegend    = first_leg,
+          visible       = is_def,
+          line          = list(color = POL_COLORS[pol], width = 2.5,
+                               dash  = POL_DASH[pol]),
+          marker        = list(color = POL_COLORS[pol], size  = 6),
+          hovertemplate = paste0(
+            "<b>", pol, "</b><br>K = %{x}<br>Risco = %{y:.4g}<extra></extra>"
+          )
+        )
+      }
+    }
+  }
+
+  fig <- layout(fig,
+    xaxis  = list(title = "K (slots por época)",
+                  color = AXIS, gridcolor = GRID,
+                  tickvals = K_TICKS, zeroline = FALSE),
+    yaxis  = list(title = "Risco médio total",
+                  color = AXIS, gridcolor = GRID, zeroline = FALSE),
+    plot_bgcolor  = PANEL, paper_bgcolor = BG,
+    font          = list(color = TEXT, size = 11),
+    legend        = list(font    = list(color = TEXT, size = 10),
+                         bgcolor = BG,
+                         title   = list(text = "Política",
+                                        font = list(color = AXIS, size = 10))),
+    margin    = list(l = 70, r = 20, t = 16, b = 55),
+    hovermode = "x unified"
+  ) |> config(displayModeBar = FALSE)
+
+  sc_btns <- lapply(scenarios, function(sc) {
+    lbl <- if (sc == "Todos") "Todos (média)" else sc
+    .btn(lbl, sc == "Todos", "#378ADD",
+         sprintf("riskFilter('%s','sc','%s')", uid, sc),
+         `data-sc` = sc)
+  })
+  c_btns <- lapply(c_vals, function(cv) {
+    .btn(paste0("C = ", cv), cv == default_c, "#F4A261",
+         sprintf("riskFilter('%s','c',%d)", uid, as.integer(cv)),
+         `data-c` = cv)
+  })
+
+  filter_bar <- tags$div(
+    style = paste0("display:flex;flex-wrap:wrap;gap:8px 14px;",
+                   "padding:10px 16px;margin-bottom:10px;",
+                   "background:#0d0d18;border-radius:7px;align-items:center;"),
+    .lbl("Cenário"),
+    tags$div(style = "display:flex;gap:5px;flex-wrap:wrap;", sc_btns),
+    .sep(),
+    .lbl("C drones"),
+    tags$div(style = "display:flex;gap:5px;flex-wrap:wrap;", c_btns)
+  )
+
+  meta_script <- tags$script(HTML(sprintf(
+    "window.riskMeta['%s']  = %s;\nwindow.riskState['%s'] = {sc:'Todos', c:%d, dim2:'c'};",
+    uid, toJSON(trace_meta, auto_unbox = TRUE),
+    uid, as.integer(default_c)
   )))
 
   tags$div(
@@ -242,6 +352,18 @@ build_risk_chart <- function(d, uid) {
 
 > **`r nrow(df)` runs** · políticas: `r paste(sort(unique(df$policy)), collapse=" · ")` · K ∈ {`r paste(sort(unique(df$K)), collapse=", ")`} · C `r min(df$C)`–`r max(df$C)`
 
-```{r chart}
-build_risk_chart(df, "sw_nsw")
+::: {.panel-tabset}
+
+## Risco × C
+
+```{r chart_c}
+build_risk_chart(df, "sw_nsw_c")
 ```
+
+## Risco × K
+
+```{r chart_k}
+build_risk_chart_k(df, "sw_nsw_k")
+```
+
+:::
