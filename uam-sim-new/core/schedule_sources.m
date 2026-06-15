@@ -48,10 +48,18 @@ if ~is_switching
         txSlots(end+1) = 2*(u-1) + 2;  %#ok<AGROW>  video source
     end
 
-    if K_free == 0, return; end
+    % Paper eq.(6): a_{u,s}=1 and r_u>0 can coexist — busy drones can
+    % also receive C2 service (prevents C2 starvation when K >> N_eff
+    % causes all drones to enter ongoing video simultaneously).
+    K_c2_busy = min(n_busy, K_free);
+    for k = 1:K_c2_busy
+        u = busy_uavs(k);
+        txSlots(end+1) = 2*(u-1) + 1;  %#ok<AGROW>  C2 source
+    end
+    K_free = K_free - K_c2_busy;
 
     eligible = setdiff(activeDrones, busy_uavs);
-    if isempty(eligible), return; end
+    if isempty(eligible) || K_free == 0, return; end
 
 else
     % --- SWITCHING: clear all in-flight reservations, full K_free ---

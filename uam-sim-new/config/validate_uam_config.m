@@ -271,12 +271,18 @@ cfg.q_LB_v = K .* sqrt(cfg.omega * cfg.n_v * L .* p_v_vec) ./ Theta;
 cfg.qbar_eps = 0.01;
 
 % Cap targets at physical throughput limits before applying epsilon.
-% q_LB_v from Cauchy-Schwarz can exceed the physical maximum when K >> N
-% (overprovisioned) or L is large, causing x_v to grow without bound and
-% starving C2. Physical max: K*p_vid/L frames/slot (system), divided by N
-% for per-drone comparison (the LB formula uses per-source units).
-max_q_s = K .* p_s_vec;                    % at most 1 C2 success/slot/drone
-max_q_v = (K .* p_v_vec) ./ L;             % at most K*p/L frames/slot/drone
+%
+% x_s is updated per slot: x_s += qbar_s - mu_s, with mu_s ∈ {0,1}.
+% For x_s to be stable: qbar_s ≤ E[mu_s] ≤ p_c2.
+%
+% Each drone is served at most ONCE per slot (binary scheduling with
+% used_drones enforcement). Therefore the per-slot, per-drone service
+% fraction is min(K/N_eff, 1), NOT K — using K here inflates qbar
+% well beyond the achievable rate when K >> N_eff, causing x_s → ∞
+% and pathological max-weight behaviour (risk increases with K at low C).
+svc_frac = min(K / N_eff, 1);              % fraction of slots a drone can be served
+max_q_s  = svc_frac .* p_s_vec;           % max C2  throughput per drone per slot
+max_q_v  = svc_frac .* p_v_vec ./ L;      % max vid throughput per drone per slot
 cfg.q_LB_s = min(cfg.q_LB_s, max_q_s);
 cfg.q_LB_v = min(cfg.q_LB_v, max_q_v);
 

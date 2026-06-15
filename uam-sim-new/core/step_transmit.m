@@ -24,8 +24,8 @@ end
 
 for i = state.activeDrones
 
-    mySlotIdx = find(txDrones == i, 1);
-    isMyTurn  = ~isempty(mySlotIdx);
+    mySlotIndices = find(txDrones == i);   % ALL sources scheduled for drone i
+    isMyTurn      = ~isempty(mySlotIndices);
 
     snr_ok = (~isnan(state.snrLast(i))) && (state.snrLast(i) > cfg.thresholdSNR);
 
@@ -33,25 +33,29 @@ for i = state.activeDrones
     c_u  = 0;     % video frame completion indicator this slot
 
     if isMyTurn
-        isVideo = txIsVideo(mySlotIdx);
         cap_Mbps = state.rawThroughput(i);
         state.avgThroughput(i) = 0.9 * state.avgThroughput(i) + 0.1 * cap_Mbps;
-        if ~isVideo
-            state.avgThroughputVid(i) = 0.9 * state.avgThroughputVid(i);
-        else
-            state.avgThroughputC2(i)  = 0.9 * state.avgThroughputC2(i);
-        end
 
-        % Combined success: SNR mask AND Bernoulli reliability
-        if snr_ok
-            if ~isVideo
-                pkt_ok = (rand() < cfg.p_c2);
+        % Determine which source types are scheduled for throughput decay logic.
+        has_c2  = any(~txIsVideo(mySlotIndices));
+        has_vid = any( txIsVideo(mySlotIndices));
+        if ~has_vid, state.avgThroughputVid(i) = 0.9 * state.avgThroughputVid(i); end
+        if ~has_c2,  state.avgThroughputC2(i)  = 0.9 * state.avgThroughputC2(i);  end
+
+        % Process each scheduled source independently (C2 and/or video).
+        for si = 1:numel(mySlotIndices)
+            isVideo = txIsVideo(mySlotIndices(si));
+
+            % Combined success: SNR mask AND Bernoulli reliability
+            if snr_ok
+                if ~isVideo
+                    pkt_ok = (rand() < cfg.p_c2);
+                else
+                    pkt_ok = (rand() < cfg.p_vid);
+                end
             else
-                pkt_ok = (rand() < cfg.p_vid);
+                pkt_ok = false;
             end
-        else
-            pkt_ok = false;
-        end
 
             if pkt_ok
                 state.txSuccess(i) = state.txSuccess(i) + 1;
@@ -105,6 +109,7 @@ for i = state.activeDrones
                     % the frame either completes or is cancelled.
                 end
             end
+        end   % end per-source loop
     else
         % Not scheduled
         link_ok = isnan(state.snrLast(i)) || state.snrLast(i) >= cfg.thresholdSNR;
