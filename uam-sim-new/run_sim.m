@@ -15,6 +15,16 @@ if nargin < 1, cfg = build_scenario_config(); end
 setup_paths();
 
 cfg = validate_uam_config(cfg);
+
+% Switching policies: one radio per drone per slot, so extra slots beyond
+% N_eff bring no per-drone throughput gain. Use qbar_sw (computed with
+% K_eff=N_eff) to prevent x_s divergence that starves video in max-weight-sw.
+SW_POLICIES = {'round-robin-sw', 'pf-classic-sw', 'max-weight-sw'};
+if isfield(cfg, 'qbar_s_sw') && ismember(cfg.schedulingPolicy, SW_POLICIES)
+    cfg.qbar_s = cfg.qbar_s_sw;
+    cfg.qbar_v = cfg.qbar_v_sw;
+end
+
 headless = isfield(cfg, 'headless') && cfg.headless;
 
 if ~headless, clc; close all; end

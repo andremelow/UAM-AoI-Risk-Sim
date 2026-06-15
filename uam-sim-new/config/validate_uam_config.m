@@ -289,18 +289,34 @@ cfg.q_LB_v = min(cfg.q_LB_v, max_q_v);
 cfg.qbar_s   = max(cfg.q_LB_s - cfg.qbar_eps, 1e-6);
 cfg.qbar_v   = max(cfg.q_LB_v - cfg.qbar_eps, 1e-6);
 
+% Switching-mode qbar: in preemptive (switching) policies the one-radio-
+% per-drone constraint limits each drone to at most 1 slot per epoch
+% regardless of K. qbar_s grows with K via the CS formula, but the
+% achievable C2 throughput stays bounded at p_c2 per slot. When
+% qbar_s >> achievable rate, x_s diverges and max-weight-sw starves video.
+% Fix: compute qbar_sw using K_eff = min(K, N_eff) — extra slots beyond
+% N_eff bring no per-drone throughput gain in switching mode.
+K_sw          = min(K, N_eff);
+q_LB_s_sw    = K_sw .* sqrt(cfg.omega * cfg.n_s .* p_s_vec) ./ Theta;
+q_LB_v_sw    = K_sw .* sqrt(cfg.omega * cfg.n_v * L .* p_v_vec) ./ Theta;
+q_LB_s_sw    = min(q_LB_s_sw, max_q_s);
+q_LB_v_sw    = min(q_LB_v_sw, max_q_v);
+cfg.qbar_s_sw = max(q_LB_s_sw - cfg.qbar_eps, 1e-6);
+cfg.qbar_v_sw = max(q_LB_v_sw - cfg.qbar_eps, 1e-6);
+
 % Replicate per-drone vectors to numDrones length.
 % In the relay model N_eff = corridorCapacity < numDrones, so omega/qbar
 % computed over N_eff entries must be extended for per-drone indexing
 % in step_transmit (cfg.qbar_s(i)), step_risk (cfg.omega(k)), and policies.
 if cfg.numDrones > N_eff
-    rep = ceil(cfg.numDrones / N_eff);
     tile = @(v) v(mod((0:cfg.numDrones-1)', N_eff) + 1);
-    cfg.omega  = tile(cfg.omega);
-    cfg.q_LB_s = tile(cfg.q_LB_s);
-    cfg.q_LB_v = tile(cfg.q_LB_v);
-    cfg.qbar_s = tile(cfg.qbar_s);
-    cfg.qbar_v = tile(cfg.qbar_v);
+    cfg.omega     = tile(cfg.omega);
+    cfg.q_LB_s    = tile(cfg.q_LB_s);
+    cfg.q_LB_v    = tile(cfg.q_LB_v);
+    cfg.qbar_s    = tile(cfg.qbar_s);
+    cfg.qbar_v    = tile(cfg.qbar_v);
+    cfg.qbar_s_sw = tile(cfg.qbar_s_sw);
+    cfg.qbar_v_sw = tile(cfg.qbar_v_sw);
 end
 
 % =====================================================================
