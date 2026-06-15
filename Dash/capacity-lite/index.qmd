@@ -24,15 +24,21 @@ format:
           else              s.k  = parseInt(val);
 
           var meta = window.riskMeta[uid];
-          var vis  = meta.map(function(m) {
-            if (m.sc === s.sc && m.k === s.k) return true;
-            return m.leg ? 'legendonly' : false;
+          var vis     = [];
+          var showleg = [];
+          var seen    = {};
+          meta.forEach(function(m) {
+            var active = (m.sc === s.sc && m.k === s.k);
+            var first  = active && !seen[m.pol];
+            if (first) seen[m.pol] = true;
+            vis.push(active ? true : false);
+            showleg.push(first);
           });
 
           var ctr  = document.getElementById('risk-ctr-' + uid);
           var pdiv = ctr ? ctr.querySelector('.js-plotly-plot') : null;
           if (pdiv && pdiv._fullLayout) {
-            Plotly.restyle(pdiv, { visible: vis });
+            Plotly.restyle(pdiv, { visible: vis, showlegend: showleg });
           }
 
           if (ctr) {
@@ -80,12 +86,20 @@ df_all <- read.csv("data/capacity_summary.csv", stringsAsFactors = FALSE)
 df <- df_all[df_all$experiment == "capacity_15min_sw_nsw_assimetrico", ]
 
 POL_COLORS <- c(
-  "round-robin"      = "#378ADD",
-  "round-robin-sw"   = "#7db8e8",
-  "pf-classic"       = "#D85A30",
-  "pf-classic-sw"    = "#e8956a",
-  "max-weight-drift" = "#F4A261",
-  "max-weight-sw"    = "#f9c784"
+  "round-robin"      = "#4DA6FF",
+  "round-robin-sw"   = "#99CCFF",
+  "pf-classic"       = "#FF5252",
+  "pf-classic-sw"    = "#FF9999",
+  "max-weight-drift" = "#33CC66",
+  "max-weight-sw"    = "#99FFCC"
+)
+POL_DASH <- c(
+  "round-robin"      = "solid",
+  "round-robin-sw"   = "dash",
+  "pf-classic"       = "solid",
+  "pf-classic-sw"    = "dash",
+  "max-weight-drift" = "solid",
+  "max-weight-sw"    = "dash"
 )
 
 BG    <- "#1e1e2e"; PANEL <- "#13131f"
@@ -155,10 +169,11 @@ build_risk_chart <- function(d, uid) {
         fig <- add_trace(fig,
           data          = sub, x = ~C, y = ~mean_risk,
           type          = "scatter", mode = "lines+markers",
-          name          = pol, legendgroup = pol,
+          name          = pol,
           showlegend    = first_leg,
           visible       = is_def,
-          line          = list(color = POL_COLORS[pol], width = 2.5),
+          line          = list(color = POL_COLORS[pol], width = 2.5,
+                               dash  = POL_DASH[pol]),
           marker        = list(color = POL_COLORS[pol], size  = 6),
           hovertemplate = paste0(
             "<b>", pol, "</b><br>C = %{x}<br>Risco = %{y:.4g}<extra></extra>"
