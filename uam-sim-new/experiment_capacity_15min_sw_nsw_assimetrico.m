@@ -1,9 +1,8 @@
 function experiment_capacity_15min_sw_nsw_assimetrico(varargin)
 %% EXPERIMENT_CAPACITY_15MIN_SW_NSW_ASSIMETRICO
-%  Idêntico ao experiment_capacity_15min_sw_nsw mas com geometria assimétrica
-%  de build_scenario_asimetrico:
-%    Route 2: North 200→500 m, East −3000→+3000 m  (≈6008 m)
-%    Route 3: North −500→−600 m, East +3000→−3000 m (≈6001 m)
+%  Geometria assimétrica, corredor 3 km (East ±1500 m), apenas roteamento estático.
+%    Route 2: North 200→500 m, East −1500→+1500 m  (≈3015 m)
+%    Route 3: North −500→−600 m, East +1500→−1500 m (≈3002 m)
 %  gNB descentralizada: [East=2300, North=0] m
 %
 %  Pesos iguais (w_unc=w_map=w_vid=1/3), L_vid=100, modelo capacity_drain.
@@ -15,9 +14,9 @@ function experiment_capacity_15min_sw_nsw_assimetrico(varargin)
 %
 %  Sweep axes:
 %    K  ∈ [1 2 4 8 16 32]   C  ∈ [2 4 8 16 32 64]
-%    Routing: static | risk_astar  ×  1 route | 2 routes  (4 cenários)
+%    Routing: static  ×  2 routes  (1 cenário)
 %
-%  Total: 6K × 6C × 4 routing × 6 políticas = 864 runs.
+%  Total: 6K × 6C × 1 routing × 6 políticas = 216 runs.
 %
 %  Output: csv_export/capacity_15min_sw_nsw_assimetrico/
 %
@@ -90,7 +89,7 @@ diary(logFile); diary on;
 fprintf('\n');
 fprintf('═══════════════════════════════════════════════════════════════\n');
 fprintf('  EXPERIMENT_CAPACITY_15MIN_SW_NSW_ASSIMETRICO\n');
-fprintf('  Rotas assimétricas (~6007 m), gNB East=2300 m\n');
+fprintf('  Rotas assimétricas 3 km (East ±1500 m), gNB East=2300 m\n');
 fprintf('  Modelo: capacity_drain  steady=%ds (15 min)\n', T_STEADY);
 fprintf('  Políticas: RR | RR-sw | PF | PF-sw | MW-drift | MW-sw\n');
 fprintf('  Started: %s\n', datestr(now)); %#ok<TNOW1,DATST>
@@ -119,7 +118,7 @@ cfg_base.headless = true;
 % ── Smoke test ────────────────────────────────────────────────────────
 if ~skip_smoke || smoke_only
     fprintf('\n──────────────────────────────────────────────────────────\n');
-    fprintf('  SMOKE TEST (corredor ~600m, C=2, K=1, T=60s, 4 políticas × 2 cenários)\n');
+    fprintf('  SMOKE TEST (corredor ~300m, C=2, K=1, T=60s, 4 políticas × 2 cenários)\n');
     fprintf('──────────────────────────────────────────────────────────\n\n');
     smoke_t0 = tic;
     smoke_ok = run_smoke_assimetrico(OUT_ROOT, cfg_base);
@@ -276,35 +275,28 @@ end
 %%  Routing scenarios — 4 combinações estáticas/A* × 1/2 rotas assimétricas
 %% ═══════════════════════════════════════════════════════════════════
 function scenarios = define_capacity_scenarios_assimetrico()
-% Route 2 (de build_scenario_asimetrico): North 200→500, East −3000→+3000
+% Corredor 3 km (East ±1500 m), apenas roteamento estático.
+% Route 2: North 200→500, East −1500→+1500  (≈3015 m)
 r1.numDrones = 1;
-r1.start     = [200, -3000];   % [North, East]
-r1.goal      = [500,  3000];
+r1.start     = [200, -1500];   % [North, East]
+r1.goal      = [500,  1500];
 r1.label     = 'Route2';
 
-% Route 3 (de build_scenario_asimetrico): North −500→−600, East +3000→−3000
+% Route 3: North −500→−600, East +1500→−1500  (≈3002 m)
 r2.numDrones = 1;
-r2.start     = [-500,  3000];  % [North, East]
-r2.goal      = [-600, -3000];
+r2.start     = [-500,  1500];  % [North, East]
+r2.goal      = [-600, -1500];
 r2.label     = 'Route3';
 
 s1.label        = '1r_static';
 s1.routing_mode = 'static';
 s1.routes       = r1;
 
-s2.label        = '1r_astar';
-s2.routing_mode = 'risk_astar';
-s2.routes       = r1;
+s2.label        = '2r_static';
+s2.routing_mode = 'static';
+s2.routes       = [r1, r2];
 
-s3.label        = '2r_static';
-s3.routing_mode = 'static';
-s3.routes       = [r1, r2];
-
-s4.label        = '2r_astar';
-s4.routing_mode = 'risk_astar';
-s4.routes       = [r1, r2];
-
-scenarios = [s1, s2, s3, s4];
+scenarios = [s2];
 end
 
 
@@ -463,8 +455,7 @@ C_smoke = 2;
 T_smoke = 60;
 K_smoke = 1;
 pols    = {'round-robin', 'round-robin-sw', 'pf-classic-sw', 'max-weight-sw'};
-scs     = define_capacity_scenarios_assimetrico();
-scs     = scs(1:2);   % apenas 1r_static e 1r_astar
+scs     = define_capacity_scenarios_assimetrico();   % 2r_static
 
 cfg_s = cfg_base;
 cfg_s.routes(1).start   = cfg_base.routes(1).start * SCALE;
