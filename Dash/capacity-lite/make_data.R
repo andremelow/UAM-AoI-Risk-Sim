@@ -11,8 +11,7 @@ suppressMessages({
 })
 
 SIM_DIRS <- c(
-  "uam-sim-new/csv_export/capacity_15min",
-  "uam-sim-new/csv_export/capacity_15min_sw_nsw"
+  "uam-sim-new/csv_export/capacity_15min_sw_nsw_assimetrico"
 )
 OUT_FILE <- "Dash/capacity-lite/data/capacity_summary.csv"
 
