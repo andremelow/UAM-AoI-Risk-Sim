@@ -180,7 +180,7 @@ r_star       = cfg.r_min + cfg.v_max * h_star_s;
 
 d_min          = 2 * cfg.r_min;
 cfg.R_bar_nav  = max((N_eff - 1) * max(2*r_star - d_min, 0), 1e-15);
-cfg.R_bar_gnd  = cfg.rho_0 * pi * r_star^2;
+cfg.R_bar_gnd  = max(cfg.rho_0 * pi * r_star^2, 1e-15);
 
 % =====================================================================
 % Phase 1 -- Linear risk surrogate coefficients (Sec. 3 of doc)
@@ -234,6 +234,21 @@ end
 if ~isfield(cfg, 'V') || isempty(cfg.V)
     cfg.V = cfg.V_s;   % V_s default is 1.0
 end
+
+% =====================================================================
+% Quadratic Lyapunov coefficients (paper eqs. 20-21)
+%
+%   eta_s = w_Nav*(N-1)*v_max/(2*R_bar_nav) + w_Ground*rho_0*pi*(r_min*v+v^2)/R_bar_gnd
+%   eta_v = w_vid / (2*H_nom)
+%
+%   Used by policy_max_weight_sw (eqs. 29-30).
+%   C_Gnd_1_phys uses only the first-order v term (no H_max multiplier)
+%   because the quadratic weight already captures h_s growth directly.
+% =====================================================================
+C_Gnd_1_phys = cfg.rho_0 * pi * (2*cfg.r_min*v_max_m_per_slot + v_max_m_per_slot^2);
+cfg.eta_s = cfg.w_unc * cfg.C_Nav_1 / (2 * cfg.R_bar_nav) + ...
+            cfg.w_map * C_Gnd_1_phys / cfg.R_bar_gnd;
+cfg.eta_v = cfg.w_vid / (2 * cfg.H_nom_slots);
 
 % =====================================================================
 % Phase 3 -- LB throughput targets via Cauchy-Schwarz (Sec. 6, Step 2)

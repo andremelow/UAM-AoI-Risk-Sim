@@ -1,30 +1,29 @@
 function txSlots = policy_max_weight_sw(eligible, K_free, state, slot, cfg)
 % POLICY_MAX_WEIGHT_SW  Switching Max-Weight scheduling (preemptive).
 %
-%  Extends policy_max_weight_doc to switching mode: eligible contains ALL
-%  active drones, including those with vid_remaining > 0. No channel is
-%  pre-reserved; the policy decides every slot from scratch.
+%  Implements a quadratic-drift Max-Weight policy aligned with the
+%  Lyapunov analysis in the model paper (Sec. IV).
 %
-%  Video weight for drone u:
+%  Status weight W_{u,s} (quadratic drift):
 %
-%    vid_remaining == 0  (no frame in progress or fresh start):
-%      W_{u,v}^start = standard Doc Sec. 4.5 formula with L = cfg.L_vid
+%    W_{u,s} = omega_u * p_c2 * [ n_s * (h_s + 1)^2 + V_s * x_s ]
 %
-%    vid_remaining == r > 0  (partial frame, r packets left):
-%      W_{u,v}^cont  = omega_u [ (p_vid * n_v / r) * D_cont
-%                               + p_vid * V_v * x_v
-%                               - kappa * r ]
+%  The (h_s+1)^2 term is the quadratic Lyapunov drift of (h_s+1): its
+%  one-step increase is 2*(h_s+1), so the weight grows FAST with AoI and
+%  the equilibrium h_s drops from ~6 (linear) to ~2 (quadratic).
+%  The "+1" baseline keeps W_s > 0 at h_s=0, preventing video monopolisation
+%  in underloaded corridors (see L_eff comment below).
 %
-%      where D_cont = D_start  (same AoI reduction at completion;
-%      the frame was generated at the same vid_gen_slot regardless of
-%      how many packets have been sent).
+%  Video weight W_{u,v} (unchanged from the linear-drift policy):
 %
-%  The 1/r factor increases the per-slot benefit as the frame nears
-%  completion, naturally biasing the policy toward finishing partial frames
-%  rather than abandoning them (avoids wasted work while still allowing
-%  preemption when C2 urgency is sufficiently high).
+%    W_{u,v} = omega_u * [ (p_vid * n_v / L_eff) * D + p_vid * V_v * x_v - kappa * L_eff ]
 %
-%  Status weight W_{u,s} is identical to policy_max_weight_doc.
+%    D       — expected z_u reduction when frame completes (linear in z_u)
+%    L_eff   = max(1, 10 * n_v / n_s) — prevents video monopolisation at low C
+%
+%  Preemption: eligible includes drones with r>0 (partial frame). The
+%  policy evaluates both W_s and W_v every slot and selects the larger,
+%  so C2 can preempt video when h_s is large.
 
 L     = cfg.L_vid;
 alpha = cfg.alpha_w(:);
@@ -41,14 +40,12 @@ for idx = 1:n
     z_u = state.dual(u).z_u;
     x_s = state.dual(u).x_s;
     x_v = state.dual(u).x_v;
-    r   = state.dual(u).vid_remaining;   % packets left in partial frame
+    r   = state.dual(u).vid_remaining;
 
-    % --- Status weight W_{u,s} ---
-    % Uses (h_s + 1) instead of h_s: Lyapunov drift of h_s^2 per slot is
-    % 2*h_s + 1, so the "+1" baseline ensures W_s > 0 even when h_s = 0.
-    % Without it, W_s → 0 as h_s → 0 and video monopolises the channel in
-    % underloaded corridors (C ≪ K), inflating risk via Jensen on R_gnd.
-    W_s = om * cfg.p_c2 * (cfg.n_s * (h_s + 1) + cfg.V_s * x_s);
+    % --- Status weight W_{u,s} (quadratic drift) ---
+    % (h_s+1)^2 = h_s^2 + 2*h_s + 1: the Lyapunov drift of (h_s+1)^2 is
+    % 2*(h_s+1), giving quadratic growth in h_s while staying positive at h_s=0.
+    W_s = om * cfg.p_c2 * (cfg.n_s * (h_s + 1)^2 + cfg.V_s * x_s);
 
     % --- D term: expected z_u reduction at frame completion ---
     %  Identical for fresh start and continuation: the frame was generated
@@ -72,11 +69,10 @@ for idx = 1:n
     end
     D = z_u + L - alpha(1)*L - D_sum;
 
-    % --- Video weight ---
-    % L_eff normalises threshold = 3*L_eff*(n_s/n_v)*h1 to a constant ~30
-    % across corridor sizes.  Without this, small N_eff (n_s→0) drives the
-    % threshold to ~5*h1, letting video monopolise and spiking R_gnd via
-    % Jensen (R_gnd ∝ h1²).  Clamped at 1 for large N_eff (C≥16).
+    % --- Video weight W_{u,v} ---
+    % L_eff normalises the video threshold across corridor sizes.
+    % Without it, small N_eff (n_s→0) lets video monopolise and spikes
+    % R_gnd via Jensen (R_gnd ∝ h1²). Clamped at 1 for large N_eff (C≥16).
     L_eff = max(1, 10 * cfg.n_v / cfg.n_s);
     W_v = om * ( (cfg.p_vid * cfg.n_v / L_eff) * D ...
                + cfg.p_vid * cfg.V_v * x_v ...
@@ -86,7 +82,6 @@ for idx = 1:n
     sources(2*idx)   = 2*(u-1) + 2;  weights(2*idx)   = W_v;
 end
 
-% Skip sources with non-positive weight (same strict reading as doc version).
 % Pick top-K_free with at most one source per drone (one radio per drone).
 candidates = find(weights > 0);
 if isempty(candidates)
