@@ -43,8 +43,12 @@ for idx = 1:n
     x_v = state.dual(u).x_v;
     r   = state.dual(u).vid_remaining;   % packets left in partial frame
 
-    % --- Status weight W_{u,s} (unchanged from no-switching) ---
-    W_s = om * cfg.p_c2 * (cfg.n_s * h_s + cfg.V_s * x_s);
+    % --- Status weight W_{u,s} ---
+    % Uses (h_s + 1) instead of h_s: Lyapunov drift of h_s^2 per slot is
+    % 2*h_s + 1, so the "+1" baseline ensures W_s > 0 even when h_s = 0.
+    % Without it, W_s → 0 as h_s → 0 and video monopolises the channel in
+    % underloaded corridors (C ≪ K), inflating risk via Jensen on R_gnd.
+    W_s = om * cfg.p_c2 * (cfg.n_s * (h_s + 1) + cfg.V_s * x_s);
 
     % --- D term: expected z_u reduction at frame completion ---
     %  Identical for fresh start and continuation: the frame was generated
