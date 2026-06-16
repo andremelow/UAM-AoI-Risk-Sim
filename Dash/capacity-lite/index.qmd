@@ -90,8 +90,10 @@ library(jsonlite)
 
 df_all <- read.csv("data/capacity_summary.csv", stringsAsFactors = FALSE)
 
-# Apenas experimento sw vs nsw assimétrico
-df <- df_all[df_all$experiment == "capacity_15min_sw_nsw_assimetrico", ]
+# Apenas experimento sw vs nsw assimétrico — só políticas switching
+SW_POLS <- c("round-robin-sw", "pf-classic-sw", "max-weight-sw", "mw-pe")
+df <- df_all[df_all$experiment == "capacity_15min_sw_nsw_assimetrico" &
+               df_all$policy %in% SW_POLS, ]
 
 POL_COLORS <- c(
   "round-robin"      = "#4DA6FF",
