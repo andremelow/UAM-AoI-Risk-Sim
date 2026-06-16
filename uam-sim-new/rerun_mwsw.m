@@ -1,5 +1,5 @@
-%% RERUN_RRSW  Re-runs only round-robin-sw across the full (K,C) grid.
-%  Use after fixing policy_round_robin_sw.m to regenerate affected CSVs.
+%% RERUN_MWSW  Re-runs only max-weight-sw across the full (K,C) grid.
+%  Use after fixing z_u startup floor in step_risk.m to regenerate affected CSVs.
 %
 %  Usage (headless):
 %    matlab -nodisplay -r "cd /mnt/stg/wrk/interlagos/simulator/v3/uam-sim-new; rerun_mwsw; exit"
@@ -20,7 +20,7 @@ diary(logFile); diary on;
 
 fprintf('\n');
 fprintf('═══════════════════════════════════════════════════════════════\n');
-fprintf('  RERUN round-robin-sw  (fix: chosen < n_elig guard)\n');
+fprintf('  RERUN max-weight-sw  (fix: z_u floor at H_nom_slots on startup)\n');
 fprintf('  K: %s\n', num2str(K_values));
 fprintf('  C: %s\n', num2str(capacity_values));
 fprintf('  Started: %s\n', datestr(now)); %#ok<TNOW1,DATST>
@@ -92,14 +92,14 @@ parfor idx = 1:n_total
     end
 end
 
-fprintf('\n[RERUN_RRSW] Concluído em %.2f h\n', toc(sw_t0)/3600);
+fprintf('\n[RERUN_MWSW] Concluído em %.2f h\n', toc(sw_t0)/3600);
 
 % Rebuild global summary by merging with existing non-rrsw rows
 existing_all = fullfile(OUT_ROOT, 'sweep_capacity_summary_all.csv');
 new_all      = fullfile(OUT_ROOT, 'sweep_capacity_summary_all.csv');
 
 T_old = readtable(existing_all, 'TextType','string');
-T_old = T_old(T_old.policy ~= "round-robin-sw", :);
+T_old = T_old(T_old.policy ~= "max-weight-sw", :);
 
 valid = ~cellfun(@isempty, all_rows_cell);
 new_rows = all_rows_cell(valid);
@@ -107,7 +107,7 @@ T_new = rows_to_table_local(new_rows);
 
 T_merged = [T_old; T_new];
 writetable(T_merged, new_all);
-fprintf('[RERUN_RRSW] Global summary updated → %s  (%d rows)\n', new_all, height(T_merged));
+fprintf('[RERUN_MWSW] Global summary updated → %s  (%d rows)\n', new_all, height(T_merged));
 
 diary off;
 
