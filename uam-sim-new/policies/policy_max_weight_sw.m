@@ -68,14 +68,12 @@ for idx = 1:n
     end
     D = z_u + L - alpha(1)*L - D_sum;
 
-    % --- Video weight: continuation vs fresh start ---
-    if r > 0
-        % Partial frame: cost is r remaining slots, benefit per slot scales as 1/r
-        L_eff = r;
-    else
-        % No frame in progress: standard start cost
-        L_eff = L;
-    end
+    % --- Video weight ---
+    % Per-slot decision: compare marginal benefit D vs h_s with L_eff=1.
+    % Original 1/L (or 1/r) amortization reduces video weight 100x vs C2
+    % making fresh starts impossible at low C (h2 would need > 1200*h1 slots).
+    % With L_eff=1, threshold becomes h2 > 3*(n_s/n_v)*h1 ≈ 12*h1, achievable.
+    L_eff = 1;
     W_v = om * ( (cfg.p_vid * cfg.n_v / L_eff) * D ...
                + cfg.p_vid * cfg.V_v * x_v ...
                - cfg.kappa * L_eff );

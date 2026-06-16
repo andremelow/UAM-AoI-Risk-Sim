@@ -71,9 +71,8 @@ for i = state.activeDrones
             z_u = z_u + (cfg.alpha_w(ii) / w_sum) * h_frame_slots;
         end
     else
-        % No frames delivered yet — floor at H_nom_slots so the max-weight-sw
-        % video weight is positive from slot 1 (avoids startup starvation).
-        z_u = max(state.dual(i).h2, cfg.H_nom_slots);
+        % No frames delivered yet — use h2 as single-frame proxy
+        z_u = state.dual(i).h2;
     end
     state.dual(i).z_u = z_u;                          % stored for scheduler
     R_vid = max(z_u / cfg.H_nom_slots - 1, 0);
