@@ -59,7 +59,7 @@ cfg.d_crit          = 200;
 cfg.R_bar_sys       = 500;
 
 cfg.microBSPos = [
-    2300  0  1300 ];   % [East, North, Down]  — próxima ao cluster de hotspots
+    2300  0  30 ];   % [East, North, Down]  — próxima ao cluster de hotspots
 
 
 cfg.rng_seed        = 55;
