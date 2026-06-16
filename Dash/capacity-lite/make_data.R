@@ -45,8 +45,12 @@ process <- function(mf_path) {
     if (!is.na(m[1, 2])) m[1, 2] else "unknown"
   }
 
+  # run_id extraído do nome do arquivo (ex: policy_N6_20260616_104300)
+  run_id <- str_extract(basename(mf_path), "[0-9]{8}_[0-9]{6}")
+
   tibble(
     experiment       = exp_tag,
+    run_id           = run_id,
     K                = as.integer(str_extract(k_tag, "[0-9]+")),
     C                = as.integer(mf$corridor_capacity[1]),
     scenario         = sc_tag,
@@ -67,7 +71,11 @@ df   <- bind_rows(compact(rows))
 
 if (nrow(df) == 0) stop("Nenhum dado agregado — verifique SIM_DIR.")
 
+# Manter apenas o run mais recente por (experiment, scenario, K, C, policy)
 df <- df |>
+  arrange(experiment, scenario, K, C, policy, desc(run_id)) |>
+  distinct(experiment, scenario, K, C, policy, .keep_all = TRUE) |>
+  select(-run_id) |>
   arrange(experiment, scenario, K, C, policy)
 
 dir.create(dirname(OUT_FILE), recursive = TRUE, showWarnings = FALSE)

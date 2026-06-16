@@ -4,6 +4,6 @@
     "href": "index.html",
     "title": "UAM Capacity · Risco vs Capacidade",
     "section": "",
-    "text": "216 runs · políticas: max-weight-drift · max-weight-sw · pf-classic · pf-classic-sw · round-robin · round-robin-sw · K ∈ {1, 2, 4, 8, 16, 32} · C 2–64\n\n\n\n\n\nCenário\n\nTodos (média)\n2r_static\n\n\nK slots/época\n\nK = 1\nK = 2\nK = 4\nK = 8\nK = 16\nK = 32"
+    "text": "288 runs · políticas: aoi-normalized · max-weight-drift · max-weight-sw · mw-pe · pf-classic · pf-classic-sw · round-robin · round-robin-sw · K ∈ {1, 2, 4, 8, 16, 32} · C 2–64\n\n\nRisco × CRisco × K\n\n\n\n\n\n\nCenário\n\nTodos (média)\n2r_static\n\n\nK slots/época\n\nK = 1\nK = 2\nK = 4\nK = 8\nK = 16\nK = 32\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nCenário\n\nTodos (média)\n2r_static\n\n\nC drones\n\nC = 2\nC = 4\nC = 8\nC = 16\nC = 32\nC = 64"
   }
 ]
