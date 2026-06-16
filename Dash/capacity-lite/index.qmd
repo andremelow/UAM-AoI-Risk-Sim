@@ -99,7 +99,8 @@ POL_COLORS <- c(
   "pf-classic"       = "#FF5252",
   "pf-classic-sw"    = "#FF9999",
   "max-weight-drift" = "#33CC66",
-  "max-weight-sw"    = "#99FFCC"
+  "max-weight-sw"    = "#99FFCC",
+  "aoi-normalized"   = "#FF9900"
 )
 POL_DASH <- c(
   "round-robin"      = "solid",
@@ -107,7 +108,8 @@ POL_DASH <- c(
   "pf-classic"       = "solid",
   "pf-classic-sw"    = "dash",
   "max-weight-drift" = "solid",
-  "max-weight-sw"    = "dash"
+  "max-weight-sw"    = "dash",
+  "aoi-normalized"   = "dot"
 )
 
 BG    <- "#1e1e2e"; PANEL <- "#13131f"
