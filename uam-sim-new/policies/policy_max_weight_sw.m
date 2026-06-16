@@ -69,11 +69,11 @@ for idx = 1:n
     D = z_u + L - alpha(1)*L - D_sum;
 
     % --- Video weight ---
-    % Per-slot decision: compare marginal benefit D vs h_s with L_eff=1.
-    % Original 1/L (or 1/r) amortization reduces video weight 100x vs C2
-    % making fresh starts impossible at low C (h2 would need > 1200*h1 slots).
-    % With L_eff=1, threshold becomes h2 > 3*(n_s/n_v)*h1 ≈ 12*h1, achievable.
-    L_eff = 1;
+    % L_eff normalises threshold = 3*L_eff*(n_s/n_v)*h1 to a constant ~30
+    % across corridor sizes.  Without this, small N_eff (n_s→0) drives the
+    % threshold to ~5*h1, letting video monopolise and spiking R_gnd via
+    % Jensen (R_gnd ∝ h1²).  Clamped at 1 for large N_eff (C≥16).
+    L_eff = max(1, 10 * cfg.n_v / cfg.n_s);
     W_v = om * ( (cfg.p_vid * cfg.n_v / L_eff) * D ...
                + cfg.p_vid * cfg.V_v * x_v ...
                - cfg.kappa * L_eff );
