@@ -140,16 +140,17 @@ K_TICKS <- sort(unique(df$K))
 )
 
 # ── Gráfico: eixo X = C, filtro por K ────────────────────────────────────────
-build_risk_chart <- function(d, uid) {
+build_risk_chart <- function(d, uid, yvar = "mean_risk", ylabel = "Risco médio total",
+                             hover_label = "Risco") {
   pols_exp <- intersect(names(POL_COLORS), unique(d$policy))
 
   df_sc <- d |>
     group_by(scenario, K, C, policy) |>
-    summarise(mean_risk = mean(mean_risk, na.rm = TRUE), .groups = "drop")
+    summarise(yval = mean(.data[[yvar]], na.rm = TRUE), .groups = "drop")
 
   df_avg <- df_sc |>
     group_by(K, C, policy) |>
-    summarise(mean_risk = mean(mean_risk, na.rm = TRUE), .groups = "drop") |>
+    summarise(yval = mean(yval, na.rm = TRUE), .groups = "drop") |>
     mutate(scenario = "Todos")
 
   df_plot   <- bind_rows(df_sc, df_avg)
@@ -175,7 +176,7 @@ build_risk_chart <- function(d, uid) {
           list(sc = sc, k = as.integer(k), pol = pol, leg = first_leg)
 
         fig <- add_trace(fig,
-          data          = sub, x = ~C, y = ~mean_risk,
+          data          = sub, x = ~C, y = ~yval,
           type          = "scatter", mode = "lines+markers",
           name          = pol,
           showlegend    = first_leg,
@@ -184,7 +185,8 @@ build_risk_chart <- function(d, uid) {
                                dash  = POL_DASH[pol]),
           marker        = list(color = POL_COLORS[pol], size  = 6),
           hovertemplate = paste0(
-            "<b>", pol, "</b><br>C = %{x}<br>Risco = %{y:.4g}<extra></extra>"
+            "<b>", pol, "</b><br>C = %{x}<br>", hover_label,
+            " = %{y:.4g}<extra></extra>"
           )
         )
       }
@@ -195,7 +197,7 @@ build_risk_chart <- function(d, uid) {
     xaxis  = list(title = "Capacidade C (drones simultâneos)",
                   color = AXIS, gridcolor = GRID,
                   tickvals = C_TICKS, zeroline = FALSE),
-    yaxis  = list(title = "Risco médio total",
+    yaxis  = list(title = ylabel,
                   color = AXIS, gridcolor = GRID, zeroline = FALSE),
     plot_bgcolor  = PANEL, paper_bgcolor = BG,
     font          = list(color = TEXT, size = 11),
@@ -246,16 +248,17 @@ build_risk_chart <- function(d, uid) {
 }
 
 # ── Gráfico: eixo X = K, filtro por C ────────────────────────────────────────
-build_risk_chart_k <- function(d, uid) {
+build_risk_chart_k <- function(d, uid, yvar = "mean_risk", ylabel = "Risco médio total",
+                               hover_label = "Risco") {
   pols_exp <- intersect(names(POL_COLORS), unique(d$policy))
 
   df_sc <- d |>
     group_by(scenario, K, C, policy) |>
-    summarise(mean_risk = mean(mean_risk, na.rm = TRUE), .groups = "drop")
+    summarise(yval = mean(.data[[yvar]], na.rm = TRUE), .groups = "drop")
 
   df_avg <- df_sc |>
     group_by(K, C, policy) |>
-    summarise(mean_risk = mean(mean_risk, na.rm = TRUE), .groups = "drop") |>
+    summarise(yval = mean(yval, na.rm = TRUE), .groups = "drop") |>
     mutate(scenario = "Todos")
 
   df_plot   <- bind_rows(df_sc, df_avg)
@@ -281,7 +284,7 @@ build_risk_chart_k <- function(d, uid) {
           list(sc = sc, c = as.integer(cv), pol = pol, leg = first_leg)
 
         fig <- add_trace(fig,
-          data          = sub, x = ~K, y = ~mean_risk,
+          data          = sub, x = ~K, y = ~yval,
           type          = "scatter", mode = "lines+markers",
           name          = pol,
           showlegend    = first_leg,
@@ -290,7 +293,8 @@ build_risk_chart_k <- function(d, uid) {
                                dash  = POL_DASH[pol]),
           marker        = list(color = POL_COLORS[pol], size  = 6),
           hovertemplate = paste0(
-            "<b>", pol, "</b><br>K = %{x}<br>Risco = %{y:.4g}<extra></extra>"
+            "<b>", pol, "</b><br>K = %{x}<br>", hover_label,
+            " = %{y:.4g}<extra></extra>"
           )
         )
       }
@@ -301,7 +305,7 @@ build_risk_chart_k <- function(d, uid) {
     xaxis  = list(title = "K (slots por época)",
                   color = AXIS, gridcolor = GRID,
                   tickvals = K_TICKS, zeroline = FALSE),
-    yaxis  = list(title = "Risco médio total",
+    yaxis  = list(title = ylabel,
                   color = AXIS, gridcolor = GRID, zeroline = FALSE),
     plot_bgcolor  = PANEL, paper_bgcolor = BG,
     font          = list(color = TEXT, size = 11),
@@ -366,6 +370,24 @@ build_risk_chart(df, "sw_nsw_c")
 
 ```{r chart_k}
 build_risk_chart_k(df, "sw_nsw_k")
+```
+
+## Peak Risco × C
+
+```{r chart_peak_c}
+build_risk_chart(df, "peak_c",
+  yvar        = "peak_risk",
+  ylabel      = "Risco do pior drone (peak)",
+  hover_label = "Peak risco")
+```
+
+## Peak Risco × K
+
+```{r chart_peak_k}
+build_risk_chart_k(df, "peak_k",
+  yvar        = "peak_risk",
+  ylabel      = "Risco do pior drone (peak)",
+  hover_label = "Peak risco")
 ```
 
 :::

@@ -61,6 +61,9 @@ process <- function(mf_path) {
     mean_h1          = mean(ds$mean_h1,    na.rm = TRUE),
     mean_h2          = mean(ds$mean_h2,    na.rm = TRUE),
     mean_risk        = mean(ds$mean_r_tot, na.rm = TRUE),
+    peak_h1          = if ("peak_h1"   %in% names(ds)) max(ds$peak_h1,   na.rm = TRUE) else NA_real_,
+    peak_h2          = if ("peak_h2"   %in% names(ds)) max(ds$peak_h2,   na.rm = TRUE) else NA_real_,
+    peak_risk        = if ("mean_r_tot" %in% names(ds)) max(ds$mean_r_tot, na.rm = TRUE) else NA_real_,
     frames_per_drone = sum(ds$frames_delivered, na.rm = TRUE) / nrow(ds),
     channel_util     = vid_ok / max(vid_ok + vid_fail, 1L)
   )
