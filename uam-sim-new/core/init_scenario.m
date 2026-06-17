@@ -79,6 +79,6 @@ infra.droneStart  = droneStart;
 infra.droneGoal   = droneGoal;
 
 plCfg = nrPathLossConfig;
-plCfg.Scenario = "UMi";
+plCfg.Scenario = "UMa";
 infra.plCfg = plCfg;
 end

@@ -1,22 +1,22 @@
 function experiment_capacity_15min_sw_nsw_assimetrico(varargin)
 %% EXPERIMENT_CAPACITY_15MIN_SW_NSW_ASSIMETRICO
-%  Geometria assimétrica, corredor 3 km (East ±1500 m), apenas roteamento estático.
-%    Route 2: North 200→500 m, East −1500→+1500 m  (≈3015 m)
-%    Route 3: North −500→−600 m, East +1500→−1500 m (≈3002 m)
-%  gNB descentralizada: [East=2300, North=0] m
+%  Geometria assimétrica, corredor 15 km (East 0–15000 m), apenas roteamento estático.
+%    Route 2: North 200→500 m,  East 0→15000 m  (≈15003 m)
+%    Route 3: North −500→−600 m, East 15000→0 m (≈15003 m)
+%  gNB em 1/3 do corredor: [East=5000, North=0, Alt=30 m]
+%  Hotspots no extremo oposto: East ≈ 12800–13200 m  →  SNR ≈ 7 dB
+%  Modelo de path loss: UMa LOS
 %
 %  Pesos iguais (w_unc=w_map=w_vid=1/3), L_vid=100, modelo capacity_drain.
 %
-%  Políticas:
-%    round-robin | round-robin-sw
-%    pf-classic  | pf-classic-sw
-%    max-weight-drift | max-weight-sw
+%  Políticas switching:
+%    round-robin-sw | pf-classic-sw | max-weight-sw | aoi-sw
 %
 %  Sweep axes:
 %    K  ∈ [1 2 4 8 16 32]   C  ∈ [2 4 8 16 32 64]
 %    Routing: static  ×  2 routes  (1 cenário)
 %
-%  Total: 6K × 6C × 1 routing × 6 políticas = 216 runs.
+%  Total: 6K × 6C × 1 routing × 4 políticas = 144 runs.
 %
 %  Output: csv_export/capacity_15min_sw_nsw_assimetrico/
 %
@@ -71,7 +71,7 @@ if isempty(k_override)
 else
     K_values = k_override;
 end
-policies = {'round-robin-sw', 'pf-classic-sw', 'max-weight-sw'};
+policies = {'round-robin-sw', 'pf-classic-sw', 'max-weight-sw', 'aoi-sw'};
 T_STEADY = 900;  % 15 minutos em regime estável
 
 % ── Output root ───────────────────────────────────────────────────────
@@ -116,7 +116,7 @@ cfg_base.headless = true;
 % ── Smoke test ────────────────────────────────────────────────────────
 if ~skip_smoke || smoke_only
     fprintf('\n──────────────────────────────────────────────────────────\n');
-    fprintf('  SMOKE TEST (corredor ~300m, C=2, K=1, T=60s, 4 políticas × 2 cenários)\n');
+    fprintf('  SMOKE TEST (corredor ~1500m, C=2, K=1, T=60s, 4 políticas × 2 cenários)\n');
     fprintf('──────────────────────────────────────────────────────────\n\n');
     smoke_t0 = tic;
     smoke_ok = run_smoke_assimetrico(OUT_ROOT, cfg_base);
@@ -273,17 +273,17 @@ end
 %%  Routing scenarios — 4 combinações estáticas/A* × 1/2 rotas assimétricas
 %% ═══════════════════════════════════════════════════════════════════
 function scenarios = define_capacity_scenarios_assimetrico()
-% Corredor 3 km (East ±1500 m), apenas roteamento estático.
-% Route 2: North 200→500, East −1500→+1500  (≈3015 m)
+% Corredor 15 km (East 0–15000 m), apenas roteamento estático.
+% Route 2: North 200→500, East 0→15000  (≈15003 m)
 r1.numDrones = 1;
-r1.start     = [200, -1500];   % [North, East]
-r1.goal      = [500,  1500];
+r1.start     = [200,     0];   % [North, East]
+r1.goal      = [500, 15000];
 r1.label     = 'Route2';
 
-% Route 3: North −500→−600, East +1500→−1500  (≈3002 m)
+% Route 3: North −500→−600, East 15000→0  (≈15003 m)
 r2.numDrones = 1;
-r2.start     = [-500,  1500];  % [North, East]
-r2.goal      = [-600, -1500];
+r2.start     = [-500, 15000];  % [North, East]
+r2.goal      = [-600,     0];
 r2.label     = 'Route3';
 
 s1.label        = '1r_static';
@@ -443,7 +443,7 @@ end
 
 
 %% ═══════════════════════════════════════════════════════════════════
-%%  Smoke test — corredor ~600m (SCALE=0.1), C=2, K=1, T=60s
+%%  Smoke test — corredor ~1500m (SCALE=0.1), C=2, K=1, T=60s
 %% ═══════════════════════════════════════════════════════════════════
 function ok = run_smoke_assimetrico(outRoot, cfg_base)
 ok     = true;

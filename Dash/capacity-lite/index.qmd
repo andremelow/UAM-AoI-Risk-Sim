@@ -91,7 +91,7 @@ library(jsonlite)
 df_all <- read.csv("data/capacity_summary.csv", stringsAsFactors = FALSE)
 
 # Apenas experimento sw vs nsw assimétrico — só políticas switching
-SW_POLS <- c("round-robin-sw", "pf-classic-sw", "max-weight-sw", "mw-pe")
+SW_POLS <- c("round-robin-sw", "pf-classic-sw", "max-weight-sw", "aoi-sw")
 df <- df_all[df_all$experiment == "capacity_15min_sw_nsw_assimetrico" &
                df_all$policy %in% SW_POLS, ]
 
@@ -102,7 +102,8 @@ POL_COLORS <- c(
   "pf-classic-sw"    = "#FF9999",
   "max-weight-drift" = "#33CC66",
   "max-weight-sw"    = "#99FFCC",
-  "aoi-normalized"   = "#FF9900"
+  "aoi-normalized"   = "#FF9900",
+  "aoi-sw"           = "#FFD700"
 )
 POL_DASH <- c(
   "round-robin"      = "solid",
@@ -111,7 +112,8 @@ POL_DASH <- c(
   "pf-classic-sw"    = "dash",
   "max-weight-drift" = "solid",
   "max-weight-sw"    = "dash",
-  "aoi-normalized"   = "dot"
+  "aoi-normalized"   = "dot",
+  "aoi-sw"           = "dashdot"
 )
 
 BG    <- "#1e1e2e"; PANEL <- "#13131f"

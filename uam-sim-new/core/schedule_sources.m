@@ -161,11 +161,15 @@ switch cfg.schedulingPolicy
         new_slots = policy_mw_pe(eligible, K_free, state, slot, cfg);
         txSlots = [txSlots, new_slots];
 
+    case 'aoi-sw'
+        new_slots = policy_aoi_sw(eligible, K_free, state, slot, cfg);
+        txSlots = [txSlots, new_slots];
+
     otherwise
         error(['schedule_sources: unknown policy "%s".\n' ...
                'Valid: round-robin, round-robin-aware, pf-classic, aoi-pure, aoi-normalized, ' ...
                'risk-aware, max-weight, max-weight-drift, best-cqi, ' ...
-               'round-robin-sw, pf-classic-sw, max-weight-sw, mw-pe'], ...
+               'round-robin-sw, pf-classic-sw, max-weight-sw, mw-pe, aoi-sw'], ...
               cfg.schedulingPolicy);
 end
 end
@@ -218,6 +222,8 @@ switch policy_name
         info = policy_max_weight_sw_info();
     case 'mw-pe'
         info = policy_mw_pe_info();
+    case 'aoi-sw'
+        info = policy_aoi_sw_info();
     otherwise
         warning('schedule_sources: no _info found for policy "%s", assuming no-switching.', ...
                 policy_name);
