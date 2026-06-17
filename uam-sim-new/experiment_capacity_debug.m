@@ -392,6 +392,18 @@ end
 
 
 %% ═══════════════════════════════════════════════════════════════════
+%%  Helpers
+%% ═══════════════════════════════════════════════════════════════════
+function v = ifempty(x, default)
+if isempty(x), v = default; else, v = x(end); end
+end
+
+function v = ternary(cond, a, b)
+if cond, v = a; else, v = b; end
+end
+
+
+%% ═══════════════════════════════════════════════════════════════════
 %%  Smoke test
 %% ═══════════════════════════════════════════════════════════════════
 function ok = run_smoke_debug(outRoot, cfg_base)
