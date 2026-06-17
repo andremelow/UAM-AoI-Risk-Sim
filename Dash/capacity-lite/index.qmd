@@ -92,8 +92,7 @@ df_all <- read.csv("data/capacity_summary.csv", stringsAsFactors = FALSE)
 
 # Apenas experimento sw vs nsw assimétrico — só políticas switching
 SW_POLS <- c("round-robin-sw", "pf-classic-sw", "max-weight-sw", "aoi-sw")
-df <- df_all[df_all$experiment == "capacity_15min_sw_nsw_assimetrico" &
-               df_all$policy %in% SW_POLS, ]
+df <- df_all[df_all$policy %in% SW_POLS, ]
 
 POL_COLORS <- c(
   "round-robin"      = "#4DA6FF",
@@ -360,38 +359,87 @@ build_risk_chart_k <- function(d, uid, yvar = "mean_risk", ylabel = "Risco médi
 }
 ```
 
-> **`r nrow(df)` runs** · políticas: `r paste(sort(unique(df$policy)), collapse=" · ")` · K ∈ {`r paste(sort(unique(df$K)), collapse=", ")`} · C `r min(df$C)`–`r max(df$C)`
+```{r exp_split}
+df_asim  <- df[df$experiment == "capacity_15min_sw_nsw_assimetrico", ]
+df_debug <- df[df$experiment == "capacity_debug", ]
+```
 
 ::: {.panel-tabset}
 
-## Risco × C
+## Assimétrico 15 km
+
+> **`r nrow(df_asim)` runs** · corredor 15 km · BS E=5000 · UMa · K ∈ {`r paste(sort(unique(df_asim$K)), collapse=", ")`} · C `r min(df_asim$C)`–`r max(df_asim$C)`
+
+::: {.panel-tabset}
+
+### Risco × C
 
 ```{r chart_c}
-build_risk_chart(df, "sw_nsw_c")
+build_risk_chart(df_asim, "sw_nsw_c")
 ```
 
-## Risco × K
+### Risco × K
 
 ```{r chart_k}
-build_risk_chart_k(df, "sw_nsw_k")
+build_risk_chart_k(df_asim, "sw_nsw_k")
 ```
 
-## Peak Risco × C
+### Peak Risco × C
 
 ```{r chart_peak_c}
-build_risk_chart(df, "peak_c",
+build_risk_chart(df_asim, "peak_c",
   yvar        = "peak_risk",
   ylabel      = "Risco do pior drone (peak)",
   hover_label = "Peak risco")
 ```
 
-## Peak Risco × K
+### Peak Risco × K
 
 ```{r chart_peak_k}
-build_risk_chart_k(df, "peak_k",
+build_risk_chart_k(df_asim, "peak_k",
   yvar        = "peak_risk",
   ylabel      = "Risco do pior drone (peak)",
   hover_label = "Peak risco")
 ```
+
+:::
+
+## Debug — RouteA vs RouteB
+
+> **`r nrow(df_debug)` runs** · Route A perto da BS (SNR≈38 dB) · Route B no cluster de hotspots (SNR≈7 dB) · T=300 s · K ∈ {`r paste(sort(unique(df_debug$K)), collapse=", ")`} · C `r min(df_debug$C)`–`r max(df_debug$C)`
+
+::: {.panel-tabset}
+
+### Risco × C
+
+```{r chart_dbg_c}
+if (nrow(df_debug) > 0) build_risk_chart(df_debug, "dbg_c") else cat("Sem dados ainda.")
+```
+
+### Risco × K
+
+```{r chart_dbg_k}
+if (nrow(df_debug) > 0) build_risk_chart_k(df_debug, "dbg_k") else cat("Sem dados ainda.")
+```
+
+### Peak Risco × C
+
+```{r chart_dbg_peak_c}
+if (nrow(df_debug) > 0) build_risk_chart(df_debug, "dbg_peak_c",
+  yvar        = "peak_risk",
+  ylabel      = "Risco do pior drone (peak)",
+  hover_label = "Peak risco") else cat("Sem dados ainda.")
+```
+
+### Peak Risco × K
+
+```{r chart_dbg_peak_k}
+if (nrow(df_debug) > 0) build_risk_chart_k(df_debug, "dbg_peak_k",
+  yvar        = "peak_risk",
+  ylabel      = "Risco do pior drone (peak)",
+  hover_label = "Peak risco") else cat("Sem dados ainda.")
+```
+
+:::
 
 :::
