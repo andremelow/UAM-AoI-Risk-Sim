@@ -140,7 +140,7 @@ combos   = build_combos(K_values, capacity_values, scenarios, policies);
 n_combos = numel(combos);
 
 nPhysCores = feature('numcores');
-nTarget    = max(1, floor(nPhysCores / 4));
+nTarget    = 8;
 cluster    = parcluster('local');
 if cluster.NumWorkers ~= nTarget
     cluster.NumWorkers = nTarget;
