@@ -14,17 +14,17 @@ cfg.schedulingPolicy = 'round-robin';
 % cfg.numDrones is auto-computed as sum([cfg.routes.numDrones]).
 % Per-drone flight time = norm(goal - start) / cfg.speedVal.
 cfg.routes(1).numDrones = 10;
-cfg.routes(1).start     = [200  -3000];   % [North, East]
-cfg.routes(1).goal      = [500  3000];   % [North, East]
+cfg.routes(1).start     = [200      0];   % [North, East]
+cfg.routes(1).goal      = [500  15000];   % [North, East]
 cfg.routes(1).label     = 'Route 2';
 cfg.routes(2).numDrones = 10;
-cfg.routes(2).start     = [-500  3000];   % [North, East]
-cfg.routes(2).goal      = [-600  -3000];   % [North, East]
+cfg.routes(2).start     = [-500  15000];   % [North, East]
+cfg.routes(2).goal      = [-600      0];   % [North, East]
 cfg.routes(2).label     = 'Route 3';
 
 cfg.numDrones       = 20;   % auto-computed by validate_uam_config
-cfg.corridorLength  = 6007.5;   % first route length (for speed)
-cfg.flightTime      = 600;
+cfg.corridorLength  = 15003.0;   % norm([300, 15000]) — corredor 15 km
+cfg.flightTime      = 1500;
 cfg.updateRate      = 7;
 cfg.speedVal        = cfg.corridorLength / cfg.flightTime;
 
@@ -59,25 +59,25 @@ cfg.d_crit          = 200;
 cfg.R_bar_sys       = 500;
 
 cfg.microBSPos = [
-    2300  0  30 ];   % [East, North, Down]  — próxima ao cluster de hotspots
-
+    5000  0  -30 ];   % [East, North, Alt(neg=above ground)] — 1/3 do corredor, 30 m altitude
 
 cfg.rng_seed        = 55;
 cfg.numHotspots     = 1;
-cfg.manualHotspots(1,:) = [-716 -1039 0.75 120];
-cfg.manualHotspots(2,:) = [-720 -1057 0.75 120];
-cfg.manualHotspots(3,:) = [-702 -1127 0.75 120];
-cfg.manualHotspots(4,:) = [-713 -1153 0.75 120];
-cfg.manualHotspots(5,:) = [-716 -1193 0.75 120];
-cfg.manualHotspots(6,:) = [-702 -1249 0.75 120];
-cfg.manualHotspots(7,:) = [-698 -1304 0.75 120];
-cfg.manualHotspots(8,:) = [-691 -1337 0.75 120];
-cfg.manualHotspots(9,:) = [-676 -1344 0.75 120];
-cfg.manualHotspots(10,:) = [-676 -1348 0.75 120];
-cfg.manualHotspots(11,:) = [-676 -1348 0.75 120];
-cfg.manualHotspots(12,:) = [-676 -1348 0.75 120];
-cfg.manualHotspots(13,:) = [-738 -1370 0.75 120];
-cfg.manualHotspots(14,:) = [-783 -1377 0.75 120];
+% Hotspots na extremidade oposta à BS (East ≈ 12800–13200 m)
+cfg.manualHotspots(1,:)  = [-716 13161 0.75 120];
+cfg.manualHotspots(2,:)  = [-720 13143 0.75 120];
+cfg.manualHotspots(3,:)  = [-702 13073 0.75 120];
+cfg.manualHotspots(4,:)  = [-713 13047 0.75 120];
+cfg.manualHotspots(5,:)  = [-716 13007 0.75 120];
+cfg.manualHotspots(6,:)  = [-702 12951 0.75 120];
+cfg.manualHotspots(7,:)  = [-698 12896 0.75 120];
+cfg.manualHotspots(8,:)  = [-691 12863 0.75 120];
+cfg.manualHotspots(9,:)  = [-676 12856 0.75 120];
+cfg.manualHotspots(10,:) = [-676 12852 0.75 120];
+cfg.manualHotspots(11,:) = [-676 12852 0.75 120];
+cfg.manualHotspots(12,:) = [-676 12852 0.75 120];
+cfg.manualHotspots(13,:) = [-738 12830 0.75 120];
+cfg.manualHotspots(14,:) = [-783 12823 0.75 120];
 
 %% ---- Routing (Risk-A* pre-flight path planning) -----------
 cfg.routing.mode           = 'static';
