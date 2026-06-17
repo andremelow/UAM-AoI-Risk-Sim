@@ -4,15 +4,16 @@ function txSlots = policy_max_weight_sw(eligible, K_free, state, slot, cfg)
 %  Implements a quadratic-drift Max-Weight policy aligned with the
 %  Lyapunov analysis in the model paper (Sec. IV).
 %
-%  Status weight W_{u,s} (quadratic drift):
+%  Status weight W_{u,s}:
 %
-%    W_{u,s} = omega_u * p_c2 * [ n_s * (h_s + 1)^2 + V_s * x_s ]
+%    W_{u,s} = omega_u * p_c2 * [ n_s * h_s*(h_s+1) + V_s * x_s ]
 %
-%  The (h_s+1)^2 term is the quadratic Lyapunov drift of (h_s+1): its
-%  one-step increase is 2*(h_s+1), so the weight grows FAST with AoI and
-%  the equilibrium h_s drops from ~6 (linear) to ~2 (quadratic).
-%  The "+1" baseline keeps W_s > 0 at h_s=0, preventing video monopolisation
-%  in underloaded corridors (see L_eff comment below).
+%  h_s*(h_s+1) = h_s^2 + h_s: zero at h_s=0 (video can compete when C2
+%  was just served), equal to linear at h_s=1, and quadratic for h_s>=2.
+%  This balances two competing effects: (h_s+1)^2 reduced h1 from ~6 to ~2
+%  but starved video at high K (where h_s stays at 1-2, making W_s > W_v
+%  nearly always). h_s*(h_s+1) preserves quadratic urgency at high h_s
+%  while letting video compete at h_s=0-1.
 %
 %  Video weight W_{u,v} (unchanged from the linear-drift policy):
 %
@@ -42,10 +43,11 @@ for idx = 1:n
     x_v = state.dual(u).x_v;
     r   = state.dual(u).vid_remaining;
 
-    % --- Status weight W_{u,s} (quadratic drift) ---
-    % (h_s+1)^2 = h_s^2 + 2*h_s + 1: the Lyapunov drift of (h_s+1)^2 is
-    % 2*(h_s+1), giving quadratic growth in h_s while staying positive at h_s=0.
-    W_s = om * cfg.p_c2 * (cfg.n_s * (h_s + 1)^2 + cfg.V_s * x_s);
+    % --- Status weight W_{u,s} ---
+    % h_s*(h_s+1): zero at h_s=0 (video can compete when fresh),
+    % equals linear at h_s=1, quadratic for h_s>=2 (urgency without
+    % starving video at high K where h_s stays at 1-2).
+    W_s = om * cfg.p_c2 * (cfg.n_s * h_s * (h_s + 1) + cfg.V_s * x_s);
 
     % --- D term: expected z_u reduction at frame completion ---
     %  Identical for fresh start and continuation: the frame was generated

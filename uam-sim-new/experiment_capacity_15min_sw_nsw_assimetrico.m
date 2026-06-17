@@ -71,9 +71,7 @@ if isempty(k_override)
 else
     K_values = k_override;
 end
-policies = {'round-robin', 'round-robin-sw', ...
-            'pf-classic',  'pf-classic-sw',  ...
-            'max-weight-drift', 'max-weight-sw'};
+policies = {'round-robin-sw', 'pf-classic-sw', 'max-weight-sw'};
 T_STEADY = 900;  % 15 minutos em regime estável
 
 % ── Output root ───────────────────────────────────────────────────────
