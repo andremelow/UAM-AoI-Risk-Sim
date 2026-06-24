@@ -8,31 +8,40 @@ function txSlots = policy_max_weight_sw(eligible, K_free, state, slot, cfg)
 %
 %    W_{u,s} = omega_u * p_c2 * [ n_s * h_s*(h_s+1) + V_s * x_s ]
 %
-%  h_s*(h_s+1) = h_s^2 + h_s: zero at h_s=0 (video can compete when C2
-%  was just served), equal to linear at h_s=1, and quadratic for h_s>=2.
-%  This balances two competing effects: (h_s+1)^2 reduced h1 from ~6 to ~2
-%  but starved video at high K (where h_s stays at 1-2, making W_s > W_v
-%  nearly always). h_s*(h_s+1) preserves quadratic urgency at high h_s
-%  while letting video compete at h_s=0-1.
+%  Video weight W_{u,v} — quadratic in z_u, normalised by L_eff:
 %
-%  Video weight W_{u,v} (unchanged from the linear-drift policy):
+%    z_nat = L_vid * N_eff / K           (natural z_u in slots)
+%    L_eff = n_v * z_nat^2 / n_s         (dimensionally derived)
+%    W_{u,v} = omega_u * p_vid * [ n_v * z_u*(z_u+1) / L_eff + V_v * x_v ]
+%            = omega_u * p_vid * [ n_s * z_u*(z_u+1) / z_nat^2 + V_v * x_v ]
 %
-%    W_{u,v} = omega_u * [ (p_vid * n_v / L_eff) * D + p_vid * V_v * x_v - kappa * L_eff ]
-%
-%    D       — expected z_u reduction when frame completes (linear in z_u)
-%    L_eff   = max(1, 10 * n_v / n_s) — prevents video monopolisation at low C
+%  Derivation: with L_eff = n_v*z_nat^2/n_s the balance W_s=W_v reduces to
+%    (z_u/z_nat)^2 = h_s*(h_s+1)    [independent of N_eff, K, n_s, n_v]
+%  so video can only preempt C2 when z_u > sqrt(h_s*(h_s+1)) * z_nat —
+%  i.e., when its delay exceeds z_nat by the same factor that C2 urgency
+%  exceeds its own unit scale. This gives K-invariant balance:
+%    h_s=0: video wins (serve video when C2 is freshly delivered)
+%    h_s=1: video wins only if z_u > 1.41 * z_nat (41 % above natural)
+%    h_s=2: video wins only if z_u > 2.45 * z_nat
 %
 %  Preemption: eligible includes drones with r>0 (partial frame). The
 %  policy evaluates both W_s and W_v every slot and selects the larger,
 %  so C2 can preempt video when h_s is large.
 
-L     = cfg.L_vid;
-alpha = cfg.alpha_w(:);
-w     = cfg.w_coh;
-
 n       = numel(eligible);
 sources = zeros(1, 2*n);
 weights = zeros(1, 2*n);
+
+% Derived normalisation: L_eff = n_v*z_nat^2/n_s where z_nat=L_vid*N_eff/K.
+% Balance W_s=W_v reduces to (z_u/z_nat)^2 = h_s*(h_s+1), K-invariant.
+if isfield(cfg, 'corridorCapacity') && cfg.corridorCapacity > 0
+    N_eff_sw = cfg.corridorCapacity;
+else
+    N_eff_sw = cfg.numDrones;
+end
+K_sw     = min(cfg.dronesPerSlot, N_eff_sw);
+z_nat    = cfg.L_vid * N_eff_sw / K_sw;
+L_eff    = cfg.n_v * z_nat * z_nat / cfg.n_s;
 
 for idx = 1:n
     u   = eligible(idx);
@@ -41,7 +50,6 @@ for idx = 1:n
     z_u = state.dual(u).z_u;
     x_s = state.dual(u).x_s;
     x_v = state.dual(u).x_v;
-    r   = state.dual(u).vid_remaining;
 
     % --- Status weight W_{u,s} ---
     % h_s*(h_s+1): zero at h_s=0 (video can compete when fresh),
@@ -49,36 +57,9 @@ for idx = 1:n
     % starving video at high K where h_s stays at 1-2).
     W_s = om * cfg.p_c2 * (cfg.n_s * h_s * (h_s + 1) + cfg.V_s * x_s);
 
-    % --- D term: expected z_u reduction at frame completion ---
-    %  Identical for fresh start and continuation: the frame was generated
-    %  at vid_gen_slot; completing it gives the same AoI update regardless
-    %  of how many packets remain.
-    nd = state.dual(u).n_delivered;
-    D_sum = 0;
-    if nd >= 1
-        for ii = 2:w
-            if ii-1 <= nd && ~isnan(state.dual(u).frame_gen_hist(ii-1))
-                h_im1 = slot - state.dual(u).frame_gen_hist(ii-1);
-            else
-                h_im1 = z_u;
-            end
-            D_sum = D_sum + alpha(ii) * (h_im1 + L);
-        end
-    else
-        for ii = 2:w
-            D_sum = D_sum + alpha(ii) * (z_u + L);
-        end
-    end
-    D = z_u + L - alpha(1)*L - D_sum;
-
-    % --- Video weight W_{u,v} ---
-    % L_eff normalises the video threshold across corridor sizes.
-    % Without it, small N_eff (n_s→0) lets video monopolise and spikes
-    % R_gnd via Jensen (R_gnd ∝ h1²). Clamped at 1 for large N_eff (C≥16).
-    L_eff = max(1, 10 * cfg.n_v / cfg.n_s);
-    W_v = om * ( (cfg.p_vid * cfg.n_v / L_eff) * D ...
-               + cfg.p_vid * cfg.V_v * x_v ...
-               - cfg.kappa * L_eff );
+    % --- Video weight W_{u,v}: quadratic in z_u, normalised by L_eff ---
+    W_v = om * cfg.p_vid * (cfg.n_v * z_u * (z_u + 1) / L_eff ...
+                           + cfg.V_v * x_v);
 
     sources(2*idx-1) = 2*(u-1) + 1;  weights(2*idx-1) = W_s;
     sources(2*idx)   = 2*(u-1) + 2;  weights(2*idx)   = W_v;

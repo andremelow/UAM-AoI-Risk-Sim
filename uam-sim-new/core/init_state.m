@@ -41,6 +41,10 @@ for u = N:-1:1
     % Doc Sec. 4.1: coherence-window AoI z_u (computed in step_risk)
     state.dual(u).z_u             = 0;
 
+    % Altitude phase flag: true when drone is in takeoff/landing ramp
+    % (set by step_risk when altProfile='takeoff_landing')
+    state.dual(u).in_ramp         = false;
+
     % Doc Sec. 4.1: debt queues x_{u,s}, x_{u,v}
     %    x_{u,s}(t+1) = [x_{u,s}(t) + qbar_s - mu_s(t)]^+
     %    x_{u,v}(t+1) = [x_{u,v}(t) + qbar_v - c_u(t)]^+

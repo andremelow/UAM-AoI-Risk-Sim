@@ -52,12 +52,44 @@ end
 % --- Drone platforms ---
 % NOTE: startTimes/endTimes were computed with a seeded RNG inside
 % generate_arrival_times — do NOT call it again here (reproducibility).
+use_tol_profile = isfield(cfg, 'altProfile') && ...
+                  strcmp(cfg.altProfile, 'takeoff_landing');
+cruise_ned = -cfg.cruiseAlt;   % NED: negative = above ground
+
 drones = cell(N, 1);
 for k = 1:N
-    p1   = [droneStart(k,1), droneStart(k,2), -60];
-    p2   = [droneGoal(k,1),  droneGoal(k,2),  -60];
-    traj = waypointTrajectory([p1; p2], ...
-           TimeOfArrival=[startTimes(k) endTimes(k)]);
+    rl = routeLen(k);
+
+    if use_tol_profile && rl > 0
+        % 4-waypoint trajectory: ground → cruise → cruise → ground.
+        % Ramp distance capped at half the route so takeoff/landing never overlap.
+        td = min(cfg.takeoffDist, rl / 2);
+        dir_k = (droneGoal(k,:) - droneStart(k,:)) / rl;   % unit vector [N,E]
+        t_ramp = td / cfg.speedVal;                          % time to complete ramp
+
+        wp_s  = [droneStart(k,:) + [0 0],     0         ];  % start: ground
+        wp_tc = [droneStart(k,:) + td*dir_k,  cruise_ned];  % top-of-climb
+        wp_td = [droneGoal(k,:)  - td*dir_k,  cruise_ned];  % top-of-descent
+        wp_e  = [droneGoal(k,:)  + [0 0],     0         ];  % end: ground
+
+        if td * 2 >= rl - 1e-6
+            % Route shorter than 2×takeoffDist: no flat cruise segment
+            waypoints = [wp_s; wp_tc; wp_e];
+            times     = [startTimes(k), startTimes(k) + t_ramp, endTimes(k)];
+        else
+            waypoints = [wp_s; wp_tc; wp_td; wp_e];
+            times     = [startTimes(k), ...
+                         startTimes(k) + t_ramp, ...
+                         endTimes(k)   - t_ramp, ...
+                         endTimes(k)];
+        end
+        traj = waypointTrajectory(waypoints, TimeOfArrival=times);
+    else
+        p1   = [droneStart(k,1), droneStart(k,2), cruise_ned];
+        p2   = [droneGoal(k,1),  droneGoal(k,2),  cruise_ned];
+        traj = waypointTrajectory([p1; p2], TimeOfArrival=[startTimes(k) endTimes(k)]);
+    end
+
     drones{k} = uavPlatform("UAV"+k, scene, Trajectory=traj);
     updateMesh(drones{k},"quadrotor",{4},[.2 .2 .2],[0 0 0],[1 0 0 0]);
 end
@@ -77,6 +109,7 @@ infra.arrivalMeta = arrivalMeta;
 infra.droneRoute  = droneRoute;
 infra.droneStart  = droneStart;
 infra.droneGoal   = droneGoal;
+infra.routeLen    = routeLen;    % per-drone route length [m], used by altitude profile
 
 plCfg = nrPathLossConfig;
 plCfg.Scenario = "UMa";

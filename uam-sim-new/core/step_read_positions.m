@@ -18,8 +18,10 @@ state.activePos    = zeros(N, 3);
 use_precomputed = isfield(infra, 'precomputed_trajectory') && ...
                   ~isempty(infra.precomputed_trajectory);
 
-% Altitude for A* trajectories: match the original corridor altitude (-60 m)
-astar_alt = -60;
+% Altitude mode: profile-aware for A* trajectories.
+use_tol_profile = isfield(cfg, 'altProfile') && ...
+                  strcmp(cfg.altProfile, 'takeoff_landing');
+cruise_ned_default = -cfg.cruiseAlt;   % used in fixed mode and as fallback
 
 for i = 1:N
     % Mark finished drones as invalid — preserve time-series data for collect_results
@@ -41,7 +43,19 @@ for i = 1:N
         traj      = infra.precomputed_trajectory{i};
         t_local   = slot - state.startSlots(i) + 1;          % 1-based offset
         t_local   = max(1, min(size(traj, 1), t_local));      % clamp
-        pos = [traj(t_local, 1), traj(t_local, 2), astar_alt, 1, 0, 0, 0];
+
+        % Altitude: compute from progress along route when profile is active
+        if use_tol_profile && isfield(infra, 'routeLen') && infra.routeLen(i) > 0
+            total_slots = max(state.endSlots(i) - state.startSlots(i), 1);
+            s_frac      = (slot - state.startSlots(i)) / total_slots;
+            s           = s_frac * infra.routeLen(i);
+            alt_ned     = altitude_profile_ned(s, infra.routeLen(i), ...
+                              cfg.cruiseAlt, cfg.takeoffDist);
+        else
+            alt_ned = cruise_ned_default;
+        end
+
+        pos = [traj(t_local, 1), traj(t_local, 2), alt_ned, 1, 0, 0, 0];
 
     else
         [pos, ~] = read(drones{i});

@@ -229,10 +229,11 @@ end
 %%  Cenários
 %% ═══════════════════════════════════════════════════════════════════
 function scenarios = define_capacity_scenarios_debug()
-% Route A — curta, próxima à BS (SNR ≈ 35-40 dB)
+% Route A — longa (~8 km), 1 km ao norte da BS: SNR varia 17-33 dB
+%   [N=1000,E=1000]→[N=1000,E=9000]  d_BS: 4.1km→1km→4.1km
 rA.numDrones = 1;
-rA.start     = [200,  4000];   % [North, East]
-rA.goal      = [300,  6000];
+rA.start     = [1000, 1000];   % [North, East]
+rA.goal      = [1000, 9000];
 rA.label     = 'RouteA';
 
 % Route B — curta, longe da BS + hotspots (SNR ≈ 6-8 dB)
@@ -241,11 +242,29 @@ rB.start     = [-500, 12000];  % [North, East]
 rB.goal      = [-600, 14000];
 rB.label     = 'RouteB';
 
+% Route B_long — gradiente de SNR: começa perto da BS, termina na zona ruim.
+%   Drones experimentam canal variável ao longo do voo (~8.5 km):
+%     início [N=0, E=5500]:   d≈500m  da BS → SNR ≈ 30-35 dB  (bom)
+%     meio   [N=-350, E=9750]: d≈4800m da BS → SNR ≈ 17-20 dB  (transição)
+%     fim    [N=-700, E=14000]: d≈9000m da BS → SNR ≈  6-8 dB  (ruim)
+%
+%   Expõe fraqueza do PF: T_avg constrói-se alto no início (bom canal),
+%   depois suprime o score quando o drone entra na zona ruim, mesmo com
+%   h1 crescendo.  MW reage diretamente ao crescimento de h1.
+rBlong.numDrones = 1;
+rBlong.start     = [0,    5500];   % [North, East] — 500m da BS
+rBlong.goal      = [-700, 14000];  % [North, East] — 9 km da BS
+rBlong.label     = 'RouteBlong';
+
 s1.label        = '2r_static';
 s1.routing_mode = 'static';
 s1.routes       = [rA, rB];
 
-scenarios = [s1];
+s2.label        = '2r_variavel';
+s2.routing_mode = 'static';
+s2.routes       = [rA, rBlong];
+
+scenarios = [s1, s2];
 end
 
 
@@ -283,15 +302,19 @@ routes = sc.routes;
 C_per = floor(C / nR);
 C_rem = C - C_per * nR;
 
-flightTime = norm(routes(1).goal - routes(1).start) / cfg.speedVal;
+% Per-route flight times — corrects numDrones for heterogeneous route lengths
+ft_per_route = arrayfun( ...
+    @(r) norm(r.goal(:)' - r.start(:)') / cfg.speedVal, routes);
+
 for ri = 1:nR
-    C_r  = C_per + (ri <= C_rem);
-    spacing = flightTime / max(C_r, 1);
+    C_r     = C_per + (ri <= C_rem);
+    spacing = ft_per_route(ri) / max(C_r, 1);
     routes(ri).numDrones = C_r + floor(T_steady / spacing);
 end
 
+flightTime           = ft_per_route(1);   % route-1 as reference for legacy fields
 cfg.routes           = routes;
-cfg.corridorLength   = norm(routes(1).goal - routes(1).start);
+cfg.corridorLength   = norm(routes(1).goal(:)' - routes(1).start(:)');
 cfg.flightTime       = flightTime;
 cfg.corridorCapacity = C;
 cfg.steady_duration  = T_steady;
@@ -299,9 +322,16 @@ cfg.dronesPerSlot    = K;
 cfg.csvDir           = outDir;
 cfg.routing.mode     = sc.routing_mode;
 
-N_total           = sum([routes.numDrones]);
-spacing_min       = flightTime / max(C, 1);
-cfg.maxStartDelay = cfg.minStartDelay + (N_total - 1) * spacing_min + 10;
+% Switch to per-route arrival model when routes have very different lengths
+if max(ft_per_route) / min(ft_per_route) > 1.5
+    cfg.arrivalModel = 'capacity_drain_routes';
+end
+
+% maxStartDelay must cover the last arrival on every route
+last_entries = arrayfun(@(ri) ...
+    cfg.minStartDelay + (routes(ri).numDrones - 1) * ...
+    ft_per_route(ri) / max(C_per + (ri <= C_rem), 1), 1:nR);
+cfg.maxStartDelay = max(last_entries) + 10;
 
 cfg.H_max  = [];
 cfg.omega  = [];

@@ -1,7 +1,13 @@
 # Dados de experimento (gerados, grandes)
 csv_export/
+csv_export_*/
 uam-sim-new/csv_export/
+uam-sim-new/csv_export_*/
 uam-sim-new/csv_export_old/
+
+# Saídas de experimento (.out) e PDFs de referência (grandes, externos)
+*.out
+ref/
 
 # MATLAB artefatos
 *.asv

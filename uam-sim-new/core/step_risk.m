@@ -42,6 +42,13 @@ for i = state.activeDrones
     % ---- R_ground: integral of rho over disk B_u (Sec. 2) ----
     if isfield(cfg, 'uniform_ground') && cfg.uniform_ground
         R_gnd_raw = cfg.rho_0 * pi * r_u^2;
+    elseif r_u * 2 < mapGrid.cellSize
+        % Disk smaller than one grid cell: disk-sum captures 0-1 cells
+        % sporadically.  Use bilinear interpolation at drone position and
+        % the closed-form area integral rho(pos) * pi * r_u^2 instead.
+        rho_pos   = interp2(mapGrid.XG(1,:), mapGrid.YG(:,1), mapGrid.rhoMap, ...
+                            pos(1), pos(2), 'linear', 0);
+        R_gnd_raw = rho_pos * pi * r_u^2;
     else
         inDisk = sqrt((mapGrid.xFlat - pos(1)).^2 + ...
                       (mapGrid.yFlat - pos(2)).^2) <= r_u;
@@ -78,7 +85,25 @@ for i = state.activeDrones
     R_vid = max(z_u / cfg.H_nom_slots - 1, 0);
 
     % ---- Total risk R_u (Sec. 2, eq. R_u) ----
-    R_tot = cfg.w_unc * R_nav + cfg.w_map * R_gnd + cfg.w_vid * R_vid;
+    % During takeoff/landing (drone below cruise altitude) the video weight is
+    % raised to w_tol_vid; cruise uses the standard w_unc/w_map/w_vid weights.
+    if isfield(cfg, 'altProfile') && strcmp(cfg.altProfile, 'takeoff_landing')
+        alt_agl = -pos(3);                        % NED z → altitude AGL [m]
+        in_ramp = alt_agl < cfg.cruiseAlt - 1e-3;
+    else
+        in_ramp = false;
+    end
+    if in_ramp
+        w_eff_unc = cfg.w_tol_unc;
+        w_eff_map = cfg.w_tol_map;
+        w_eff_vid = cfg.w_tol_vid;
+    else
+        w_eff_unc = cfg.w_unc;
+        w_eff_map = cfg.w_map;
+        w_eff_vid = cfg.w_vid;
+    end
+    state.dual(i).in_ramp = in_ramp;             % exposed for schedulers/analysis
+    R_tot = w_eff_unc * R_nav + w_eff_map * R_gnd + w_eff_vid * R_vid;
 
     % ---- Linear surrogate Rhat_u (Sec. 3, final boxed) ----
     Rhat_u = cfg.n_s * state.dual(i).h1 + cfg.n_v * z_u;

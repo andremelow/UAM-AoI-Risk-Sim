@@ -11,7 +11,7 @@
 %    'max-weight-drift' 'max-weight-sw'
 
 %% ── Parâmetros que você pode mudar ───────────────────────────────────
-policy    = 'max-weight-drift';   % política a testar
+policy    = 'max-weight-sw';   % política a testar
 K         = 32;                   % slots por época
 C         = 4;                    % drones simultâneos no corredor
 T_steady  = 900;                  % duração regime estável (s)

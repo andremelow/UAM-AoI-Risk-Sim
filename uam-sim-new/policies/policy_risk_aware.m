@@ -38,11 +38,12 @@ end
 txSlots = sources(order(1:min(K, 2*n)));
 end
 
-function R = weighted_risk(state, u, cfg)
-if ~isempty(state.riskUnc{u})
-    R = cfg.w_unc * state.riskUnc{u}(end) + ...
-        cfg.w_map * state.riskMap{u}(end) + ...
-        cfg.w_vid * state.riskVid{u}(end);
+function R = weighted_risk(state, u, ~)
+% Reads the pre-computed phase-aware composite risk from step_risk.
+% Phase-dependent weights (takeoff/landing vs cruise) are already baked
+% into state.riskTot by step_risk — no need to recompute here.
+if ~isempty(state.riskTot{u})
+    R = state.riskTot{u}(end);
 else
     R = 0;
 end

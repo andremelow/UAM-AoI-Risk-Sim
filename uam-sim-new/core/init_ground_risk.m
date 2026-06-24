@@ -63,13 +63,15 @@ end
 rhoMap = min(rhoMap, 1);
 
 % --- Grid metadata for downstream use ---
-mapGrid.XG      = XG;
-mapGrid.YG      = YG;
-mapGrid.xFlat   = XG(:);
-mapGrid.yFlat   = YG(:);
-mapGrid.rhoFlat = rhoMap(:);
-mapGrid.deltaA  = deltaA;
-mapGrid.hmapZ   = hmapZ;
-mapGrid.mapXlim = mapXlim;
-mapGrid.mapYlim = mapYlim;
+mapGrid.XG       = XG;
+mapGrid.YG       = YG;
+mapGrid.xFlat    = XG(:);
+mapGrid.yFlat    = YG(:);
+mapGrid.rhoFlat  = rhoMap(:);
+mapGrid.rhoMap   = rhoMap;     % 2D para interp2 em step_risk
+mapGrid.cellSize = cellSize;
+mapGrid.deltaA   = deltaA;
+mapGrid.hmapZ    = hmapZ;
+mapGrid.mapXlim  = mapXlim;
+mapGrid.mapYlim  = mapYlim;
 end

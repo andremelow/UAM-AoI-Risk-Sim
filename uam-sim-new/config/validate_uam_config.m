@@ -36,6 +36,23 @@ defaults.droneEastPos    = 100;
 defaults.minStartDelay   = 20;
 defaults.maxStartDelay   = 50;
 
+% --- Altitude profile ---
+%   'fixed'           : constant cruise altitude throughout (legacy behaviour)
+%   'takeoff_landing' : linear ramp 0→cruiseAlt in first takeoffDist metres,
+%                       flat cruise, linear ramp cruiseAlt→0 in last takeoffDist metres
+defaults.altProfile    = 'fixed';
+defaults.cruiseAlt     = 60;    % metres AGL  (fixed mode default)
+defaults.takeoffDist   = 60;    % metres horizontal for takeoff/landing ramp
+
+% --- Phase-aware risk weights (takeoff/landing ramp) ---
+%   During takeoff/landing the drone is at low altitude and close to people;
+%   video surveillance is most critical → w_tol_vid >> w_tol_unc, w_tol_map.
+%   Only active when altProfile = 'takeoff_landing' AND drone alt < cruiseAlt.
+%   Cruise phase always uses the standard w_unc / w_map / w_vid weights.
+defaults.w_tol_vid = 0.80;   % video weight during takeoff/landing ramp
+defaults.w_tol_unc = 0.10;   % navigation weight during takeoff/landing ramp
+defaults.w_tol_map = 0.10;   % ground risk weight during takeoff/landing ramp
+
 % --- Radio ---
 defaults.fc              = 3.5e9;
 defaults.pTransmitDrone  = 23;

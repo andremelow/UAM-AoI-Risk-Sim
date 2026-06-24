@@ -158,6 +158,46 @@ switch model
         arrivalMeta.lambda_eff       = C / cfg.flightTime;
 
     % ------------------------------------------------------------------
+    case 'capacity_drain_routes'
+        % Per-route capacity_drain for scenarios with heterogeneous route lengths.
+        %
+        % Each route gets its own capacity_drain sequence, derived from its own
+        % flight time, so exactly C_r drones are active on route r during steady
+        % state.  Arrival times are concatenated in route order (NOT globally
+        % sorted) so that init_scenario can assign them correctly (first N_r1
+        % times → route 1, next N_r2 → route 2, etc.).
+        %
+        % cfg.routes            — struct array; each entry must have .numDrones,
+        %                         .start [N,E], .goal [N,E], and .label
+        % cfg.speedVal          — drone cruise speed [m/s]
+        % cfg.corridorCapacity  — total C split equally across routes
+        % cfg.steady_duration   — T_steady per route [s]
+
+        nR       = numel(cfg.routes);
+        C_total  = get_field(cfg, 'corridorCapacity', nR);
+        T_steady = get_field(cfg, 'steady_duration', 300);
+        C_per    = floor(C_total / nR);
+        C_rem    = C_total - C_per * nR;
+
+        t_parts = cell(nR, 1);
+        for ri = 1:nR
+            C_ri   = C_per + (ri <= C_rem);
+            ft_ri  = norm(cfg.routes(ri).goal(:)' - cfg.routes(ri).start(:)') ...
+                     / cfg.speedVal;
+            sp_ri  = ft_ri / max(C_ri, 1);
+            N_ri   = cfg.routes(ri).numDrones;
+            t_parts{ri} = cfg.minStartDelay + (0:N_ri-1)' * sp_ri;
+        end
+
+        startTimes = vertcat(t_parts{:});   % ordered by route — do NOT sort
+        arrivalMeta.description      = sprintf('Capacity-drain per route (%d routes)', nR);
+        arrivalMeta.corridorCapacity = C_total;
+        arrivalMeta.steady_duration  = T_steady;
+        arrivalMeta.lambda_eff       = C_total / max(cellfun(@(t) t(end), t_parts));
+        arrivalMeta.startTimes       = startTimes;
+        return   % bypass the global sort at line 233
+
+    % ------------------------------------------------------------------
     case 'relay'
         % Relay at corridor capacity C: consecutive drones separated by
         % flightTime/C seconds so exactly C drones are active at all times.

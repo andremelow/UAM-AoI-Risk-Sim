@@ -6,23 +6,23 @@ function cfg = build_scenario_config()
 arrModel = 'deterministic';
 
 %% ---- Core simulation parameters ---------------------------
-cfg.schedulingPolicy = 'max-weight-drift';
+cfg.schedulingPolicy = 'max-weight-sw';
 
 
 %% ---- Routes (fleet groups with individual entry/exit) -----------
 % cfg.numDrones is auto-computed as sum([cfg.routes.numDrones]).
 % Per-drone flight time = norm(goal - start) / cfg.speedVal.
-cfg.routes(1).numDrones = 2;
+cfg.routes(1).numDrones = 10;
 cfg.routes(1).start     = [0  -3000];   % [North, East]
 cfg.routes(1).goal      = [0  3000];   % [North, East]
 cfg.routes(1).label     = 'Route 1';
-cfg.routes(2).numDrones = 5;
+cfg.routes(2).numDrones = 10;
 cfg.routes(2).start     = [500  3000];   % [North, East]
 cfg.routes(2).goal      = [200  -3000];   % [North, East]
 cfg.routes(2).label     = 'Route 2';
 
-cfg.numDrones       = 10;   % auto-computed by validate_uam_config
-cfg.corridorLength  = 3000.0;   % first route length (for speed)
+cfg.numDrones       = 20;   % auto-computed by validate_uam_config
+cfg.corridorLength  = 2000.0;   % first route length (for speed)
 cfg.flightTime      = 600;
 cfg.updateRate      = 7;
 cfg.speedVal        = cfg.corridorLength / cfg.flightTime;
@@ -37,7 +37,7 @@ cfg.thresholdSNR    = 5;
 
 cfg.r_min           = 10;
 cfg.k_aoi           = 0.5;
-cfg.dronesPerSlot   = 40;
+cfg.dronesPerSlot   = 1;
 
 cfg.droneEastPos    = 0;   % legacy — overridden by cfg.routes
 cfg.minStartDelay   = 2;
