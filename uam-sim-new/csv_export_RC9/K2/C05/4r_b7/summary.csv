@@ -1,0 +1,2 @@
+capacity,K,scenario,routing_mode,num_routes,num_drones_total,policy,mean_h1,mean_h2,mean_r_sys,peak_r_sys,Jhat_emp,J_LB_doc,rho_emp,LB_legacy,qbar_s_mean,qbar_v_mean,q_emp_s_mean,q_emp_v_mean,xs_final_mean,xv_final_mean,n_s,n_v
+5,2,4r_b7,static,4,13,mw-sw-v8,8.3163,14.6179,3.130519e+00,2.360520e+01,1.276324e+00,1.638163e+00,0.7791,4.667748e+00,0.0562,0.0540,0.0203,0.0222,20.42,8.50,1.274424e-03,3.747049e-03
