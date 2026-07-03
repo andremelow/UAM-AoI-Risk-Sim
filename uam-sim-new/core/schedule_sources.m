@@ -144,8 +144,23 @@ switch cfg.schedulingPolicy
         txSlots = [txSlots, new_slots];
         state = mark_vid_starts(state, new_slots);
 
+    case 'mw-otimo-ch'
+        new_slots = policy_mw_otimo_ch(eligible, K_free, state, slot, cfg);
+        txSlots = [txSlots, new_slots];
+        state = mark_vid_starts(state, new_slots);
+
     case 'max-risk-nsw'
         new_slots = policy_max_risk_nsw(eligible, K_free, state, slot, cfg);
+        txSlots = [txSlots, new_slots];
+        state = mark_vid_starts(state, new_slots);
+
+    case 'max-risk-v2-nsw'
+        new_slots = policy_max_risk_v2_nsw(eligible, K_free, state, slot, cfg);
+        txSlots = [txSlots, new_slots];
+        state = mark_vid_starts(state, new_slots);
+
+    case 'mw3-nsw'
+        new_slots = policy_mw3_nsw(eligible, K_free, state, slot, cfg);
         txSlots = [txSlots, new_slots];
         state = mark_vid_starts(state, new_slots);
 
@@ -183,15 +198,44 @@ switch cfg.schedulingPolicy
         new_slots = policy_mw_sw_otimo(eligible, K_free, state, slot, cfg);
         txSlots = [txSlots, new_slots];
 
+    case 'mw-sw-otimo-ch'
+        new_slots = policy_mw_sw_otimo_ch(eligible, K_free, state, slot, cfg);
+        txSlots = [txSlots, new_slots];
+
+    case 'mw-sw-v8'
+        new_slots = policy_mw_sw_v8(eligible, K_free, state, slot, cfg);
+        txSlots = [txSlots, new_slots];
+
+    case 'mr-mw-ch-sw'
+        new_slots = policy_mr_mw_ch_sw(eligible, K_free, state, slot, cfg);
+        txSlots = [txSlots, new_slots];
+
+    case 'mw-sw-doc-g-u'
+        new_slots = policy_mw_sw_doc_g_u(eligible, K_free, state, slot, cfg);
+        txSlots = [txSlots, new_slots];
+
+    case 'mw3-sn'
+        new_slots = policy_mw3_sn(eligible, K_free, state, slot, cfg);
+        txSlots = [txSlots, new_slots];
+
     case 'max-risk-sw'
         new_slots = policy_max_risk_sw(eligible, K_free, state, slot, cfg);
+        txSlots = [txSlots, new_slots];
+
+    case 'max-risk-pf-sw'
+        new_slots = policy_max_risk_pf_sw(eligible, K_free, state, slot, cfg);
+        txSlots = [txSlots, new_slots];
+
+    case 'max-risk-v2'
+        new_slots = policy_max_risk_v2(eligible, K_free, state, slot, cfg);
         txSlots = [txSlots, new_slots];
 
     otherwise
         error(['schedule_sources: unknown policy "%s".\n' ...
                'Valid: round-robin, round-robin-aware, pf-classic, aoi-pure, aoi-normalized, ' ...
                'risk-aware, max-weight, max-weight-drift, best-cqi, ' ...
-               'round-robin-sw, pf-classic-sw, max-weight-sw, mw-pe, aoi-sw, max-risk-sw'], ...
+               'round-robin-sw, pf-classic-sw, max-weight-sw, mw-pe, aoi-sw, max-risk-sw, ' ...
+               'mw-sw-otimo, mw-sw-doc-g-u, max-risk-v2, max-risk-v2-nsw'], ...
               cfg.schedulingPolicy);
 end
 end
@@ -236,8 +280,16 @@ switch policy_name
         info = policy_max_weight_drift_info();
     case 'mw-otimo'
         info = policy_mw_otimo_info();
+    case 'mw-otimo-ch'
+        info = policy_mw_otimo_ch_info();
     case 'max-risk-nsw'
         info = policy_max_risk_nsw_info();
+    case 'max-risk-v2-nsw'
+        info = policy_max_risk_v2_nsw_info();
+    case 'mw3-sn'
+        info = policy_mw3_sn_info();
+    case 'mw3-nsw'
+        info = policy_mw3_nsw_info();
     case 'best-cqi'
         info = policy_best_cqi_info();
     case 'round-robin-sw'
@@ -254,8 +306,20 @@ switch policy_name
         info = policy_reserve_c2_sw_info();
     case 'mw-sw-otimo'
         info = policy_mw_sw_otimo_info();
+    case 'mw-sw-otimo-ch'
+        info = policy_mw_sw_otimo_ch_info();
+    case 'mw-sw-v8'
+        info = policy_mw_sw_v8_info();
+    case 'mr-mw-ch-sw'
+        info = policy_mr_mw_ch_sw_info();
+    case 'mw-sw-doc-g-u'
+        info = policy_mw_sw_doc_g_u_info();
     case 'max-risk-sw'
         info = policy_max_risk_sw_info();
+    case 'max-risk-pf-sw'
+        info = policy_max_risk_pf_sw_info();
+    case 'max-risk-v2'
+        info = policy_max_risk_v2_info();
     otherwise
         warning('schedule_sources: no _info found for policy "%s", assuming no-switching.', ...
                 policy_name);
