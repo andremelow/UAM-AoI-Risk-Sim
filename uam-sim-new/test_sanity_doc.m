@@ -380,6 +380,110 @@ else
 end
 
 % =====================================================================
+fprintf('\n[Test 10] MW-Z with Z == 0 reproduces mw-sw-v8 exactly\n');
+% =====================================================================
+% policy_mw_z weights are (V*V_us + Z*alpha_us)*p*h; with Z = 0 and V = 1
+% they must equal policy_mw_sw_v8 (V_us*p*h) source-for-source. Sweep a
+% set of deterministic synthetic states (varied h1/h2/SNR, K=1 and K=2).
+
+cfg10 = cfg;
+cfg10.numDrones        = 4;
+cfg10.corridorCapacity = 4;   % required by policy_mw_sw_v8 / policy_mw_z
+cfg10.omega            = [];
+cfg10 = validate_uam_config(cfg10);
+ok10 = true;
+for K10 = [1 2]
+    cfg10.dronesPerSlot = K10;
+    for variant = 1:5
+        s10 = struct();
+        s10.activeDrones = 1:4;
+        s10.Z_env        = zeros(4,1);
+        s10.snrLast      = [15; 15; 15; 15];
+        if variant == 4, s10.snrLast(2) = 0; end       % one drone in outage
+        for u = 1:4
+            s10.dual(u).h1 = mod(3*u + variant, 7) + 1;
+            s10.dual(u).h2 = mod(5*u + 2*variant, 11) + 1;
+            s10.dual(u).vid_remaining = 0;
+            s10.dual(u).vid_in_flight = false;
+        end
+        if variant == 5, s10.dual(3).h2 = 400; end     % dominant video urgency
+        tx_v8 = policy_mw_sw_v8(1:4, K10, s10, 0, cfg10);
+        tx_z  = policy_mw_z(1:4, K10, s10, 0, cfg10);
+        if ~isequal(tx_v8, tx_z)
+            fprintf('  FAIL: K=%d variant=%d  v8=[%s]  mw-z=[%s]\n', ...
+                    K10, variant, num2str(tx_v8), num2str(tx_z));
+            ok10 = false;
+        end
+    end
+end
+if ok10
+    fprintf('  PASS: mw-z == mw-sw-v8 for all 10 synthetic states (Z=0)\n');
+    passed = passed + 1;
+else
+    failed = failed + 1;
+end
+
+% =====================================================================
+fprintf('\n[Test 11] MW-Z-V9 with Z == 0 reproduces mw-sw-v9 exactly\n');
+% =====================================================================
+cfg11 = cfg10;
+ok11 = true;
+for K11 = [1 2]
+    cfg11.dronesPerSlot = K11;
+    for variant = 1:5
+        s11 = struct();
+        s11.activeDrones = 1:4;
+        s11.Z_env        = zeros(4,1);
+        s11.snrLast      = [15; 15; 15; 15];
+        s11.aoiRadius    = [20; 35; 50; 15];
+        s11.riskMap      = {[0.5]; [2.8]; [0.0]; [1.2]};
+        if variant == 4, s11.snrLast(2) = 0; end
+        for u = 1:4
+            s11.dual(u).h1 = mod(3*u + variant, 7) + 1;
+            s11.dual(u).h2 = mod(5*u + 2*variant, 11) + 1;
+            s11.dual(u).in_ramp = (u == 2);
+            s11.dual(u).vid_remaining = 0;
+            s11.dual(u).vid_in_flight = false;
+        end
+        if variant == 5, s11.dual(3).h2 = 400; end
+        tx_v9 = policy_mw_sw_v9(1:4, K11, s11, 0, cfg11);
+        tx_z9 = policy_mw_z_v9(1:4, K11, s11, 0, cfg11);
+        if ~isequal(tx_v9, tx_z9)
+            fprintf('  FAIL: K=%d variant=%d  v9=[%s]  mw-z-v9=[%s]\n', ...
+                    K11, variant, num2str(tx_v9), num2str(tx_z9));
+            ok11 = false;
+        end
+    end
+end
+if ok11
+    fprintf('  PASS: mw-z-v9 == mw-sw-v9 for all 10 synthetic states (Z=0)\n');
+    passed = passed + 1;
+else
+    failed = failed + 1;
+end
+
+% Counter-check: a large Z on a low-weight drone must change the decision
+% (guards against mw-z silently ignoring Z).
+cfg10.dronesPerSlot = 1;
+s10.snrLast = [15; 15; 15; 15];
+for u = 1:4
+    s10.dual(u).h1 = 5; s10.dual(u).h2 = 5;
+end
+s10.dual(1).h1 = 50;                       % v8 favourite: drone 1
+s10.Z_env = zeros(4,1);
+tx_a = policy_mw_z(1:4, 1, s10, 0, cfg10);
+s10.Z_env(4) = 1e6;                        % huge envelope debt on drone 4
+tx_b = policy_mw_z(1:4, 1, s10, 0, cfg10);
+if ceil(tx_a(1)/2) == 1 && ceil(tx_b(1)/2) == 4
+    fprintf('  PASS: Z redirects the slot (drone 1 -> drone 4 under Z(4)=1e6)\n');
+    passed = passed + 1;
+else
+    fprintf('  FAIL: tx with Z=0 -> drone %d, with Z(4)=1e6 -> drone %d\n', ...
+            ceil(tx_a(1)/2), ceil(tx_b(1)/2));
+    failed = failed + 1;
+end
+
+% =====================================================================
 fprintf('\n========================================================\n');
 fprintf('   Results: %d passed, %d failed\n', passed, failed);
 fprintf('========================================================\n\n');

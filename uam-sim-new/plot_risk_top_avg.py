@@ -34,6 +34,17 @@ parser.add_argument('--twin', action='store_true',
                     help='dual y-axis: mean on left axis, peak on right axis (own scale each)')
 parser.add_argument('--split', action='store_true',
                     help='two rows: top = mean, bottom = peak (K across columns, own scale each)')
+parser.add_argument('--floor', default='',
+                    help='caminho do risk_floor.csv para sobrepor o piso absoluto')
+parser.add_argument('--logx', action='store_true',
+                    help='eixo X (UAVs simultâneos) em escala logarítmica')
+parser.add_argument('--logy', action='store_true',
+                    help='eixo Y (risco) em escala logarítmica')
+parser.add_argument('--gap', action='store_true',
+                    help='plota o GAP R_sys - Floor (risco reduzível) em vez do R_sys')
+parser.add_argument('--policies', default='',
+                    help='comma list of policies to keep (default: all present), '
+                         'e.g. round-robin-sw,pf-classic-sw,mr-mw-ch-sw')
 args = parser.parse_args()
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -54,10 +65,38 @@ if args.C:
 df = (df.groupby(['policy', 'K', 'capacity'], as_index=False)
         [['mean_r_sys', 'peak_r_sys']].mean())
 
-POLICIES  = ['round-robin-sw', 'pf-classic-sw', 'max-risk-sw']
-POL_LABEL = {'round-robin-sw': 'RR', 'pf-classic-sw': 'PF', 'max-risk-sw': 'Risk-Aware'}
-COLORS    = {'round-robin-sw': '#F9A825', 'pf-classic-sw': '#E53935', 'max-risk-sw': '#1E88E5'}
-MARKERS   = {'round-robin-sw': 'o', 'pf-classic-sw': 's', 'max-risk-sw': 'D'}
+# Pisos teóricos (opcional), promediados sobre os mesmos cenários
+floors = None
+if args.floor:
+    fdf = pd.read_csv(args.floor)
+    fdf = fdf[fdf['scenario'].isin(SCEN)]
+    g = fdf.groupby('capacity', as_index=False)[
+        ['Rsys_floor_abs', 'Rsys_floor_abs_peak',
+         'Rsys_floor_real', 'Rsys_floor_real_peak']].mean()
+    floors = {
+        'abs':  {'mean_r_sys': dict(zip(g['capacity'], g['Rsys_floor_abs'])),
+                 'peak_r_sys': dict(zip(g['capacity'], g['Rsys_floor_abs_peak']))},
+        'real': {'mean_r_sys': dict(zip(g['capacity'], g['Rsys_floor_real'])),
+                 'peak_r_sys': dict(zip(g['capacity'], g['Rsys_floor_real_peak']))},
+    }
+
+POLICIES  = ['round-robin-sw', 'pf-classic-sw', 'max-risk-sw', 'mw-otimo', 'mw-sw-otimo', 'mw-sw-otimo-ch', 'mw-otimo-ch', 'mr-mw-ch-sw']
+POL_LABEL = {'round-robin-sw': 'RR', 'pf-classic-sw': 'PF', 'max-risk-sw': 'Risk-Aware',
+             'mw-otimo': 'MW-Opt (ns)', 'mw-sw-otimo': 'MW-Opt (sw)',
+             'mw-sw-otimo-ch': 'mw(sw)', 'mw-otimo-ch': 'mw(no-sw)',
+             'mr-mw-ch-sw': 'Risk-Aware'}
+COLORS    = {'round-robin-sw': '#F9A825', 'pf-classic-sw': '#E53935', 'max-risk-sw': '#1E88E5',
+             'mw-otimo': '#6D4C41', 'mw-sw-otimo': '#43A047',
+             'mw-sw-otimo-ch': '#1565C0', 'mw-otimo-ch': '#00897B',
+             'mr-mw-ch-sw': '#8E24AA'}
+MARKERS   = {'round-robin-sw': 'o', 'pf-classic-sw': 's', 'max-risk-sw': 'D',
+             'mw-otimo': '<', 'mw-sw-otimo': '>',
+             'mw-sw-otimo-ch': 'P', 'mw-otimo-ch': 'X',
+             'mr-mw-ch-sw': '*'}
+POLICIES  = [p for p in POLICIES if p in set(df['policy'].unique())]
+if args.policies:
+    keepP = [p.strip() for p in args.policies.split(',')]
+    POLICIES = [p for p in POLICIES if p in keepP]
 
 K_VALUES = sorted(df['K'].unique())
 if args.K:
@@ -80,23 +119,50 @@ if args.split:
             loads = sorted(sub['capacity'].unique())
             for pol in POLICIES:
                 d = sub[sub['policy'] == pol].sort_values('capacity')
-                ax.plot(d['capacity'], d[metric], color=COLORS[pol],
+                yv = d[metric].values.astype(float)
+                if args.gap and floors is not None:
+                    fc = floors['real'][metric]
+                    yv = yv - np.array([fc.get(c, np.nan) for c in d['capacity'].values])
+                ax.plot(d['capacity'], yv, color=COLORS[pol],
                         marker=MARKERS[pol], ms=5, lw=2.0, ls=ls)
+            if floors is not None and not args.gap:
+                fc = floors['real'][metric]
+                xs = [c for c in loads if c in fc]
+                ax.plot(xs, [fc[c] for c in xs], color='k', ls='-.', lw=1.7)
             if ri == 0:
                 ax.set_title(f'K = {K}', fontweight='bold')
             else:
                 ax.set_xlabel('Simultaneous UAVs')
             if ci == 0:
-                ax.set_ylabel(f'{mlabel}  $R_{{sys}}$')
-            ax.set_xticks(loads)
+                if args.gap:
+                    ax.set_ylabel(f'{mlabel} gap  $R_{{sys}}-$Floor')
+                else:
+                    ax.set_ylabel(f'{mlabel}  $R_{{sys}}$')
+            if args.logx:
+                ax.set_xscale('log')
+                ax.set_xticks(loads)
+                ax.get_xaxis().set_major_formatter(ticker.ScalarFormatter())
+                ax.minorticks_off()
+            else:
+                ax.set_xticks(loads)
             ax.tick_params(axis='x', labelsize=8)
-            ax.ticklabel_format(axis='y', style='sci', scilimits=(0, 0))
+            if args.logy:
+                ax.set_yscale('log')
+            else:
+                ax.ticklabel_format(axis='y', style='sci', scilimits=(0, 0))
             ax.grid(True, ls='--', alpha=0.4)
-    fig.legend(handles=policy_handles, ncol=len(POLICIES), loc='lower center',
+    split_handles = list(policy_handles)
+    if floors is not None and not args.gap:
+        split_handles.append(Line2D([0], [0], color='k', ls='-.', lw=1.7,
+                                    label='Floor'))
+    fig.legend(handles=split_handles, ncol=len(split_handles), loc='lower center',
                bbox_to_anchor=(0.5, -0.04), frameon=False, fontsize=10)
     ktag = f'_K{"-".join(str(k) for k in K_VALUES)}' if args.K else ''
     ctag = f'_C{args.C.replace(",", "-")}' if args.C else ''
-    base = os.path.join(OUT_DIR, f'risk_top_avg_linear_split{ktag}{ctag}')
+    xtag = '_logx' if args.logx else ''
+    ytag = '_logy' if args.logy else ''
+    gtag = '_gap' if args.gap else ''
+    base = os.path.join(OUT_DIR, f'risk_top_avg_linear_split{gtag}{xtag}{ytag}{ktag}{ctag}')
     for ext in ('pdf', 'png'):
         fig.savefig(f'{base}.{ext}', dpi=150, bbox_inches='tight')
         print(f'Saved: {base}.{ext}')

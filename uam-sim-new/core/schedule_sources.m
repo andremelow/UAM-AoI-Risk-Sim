@@ -206,6 +206,22 @@ switch cfg.schedulingPolicy
         new_slots = policy_mw_sw_v8(eligible, K_free, state, slot, cfg);
         txSlots = [txSlots, new_slots];
 
+    case 'mw-sw-v9'
+        new_slots = policy_mw_sw_v9(eligible, K_free, state, slot, cfg);
+        txSlots = [txSlots, new_slots];
+
+    case 'mw-z'
+        new_slots = policy_mw_z(eligible, K_free, state, slot, cfg);
+        txSlots = [txSlots, new_slots];
+
+    case 'mw-z-v9'
+        new_slots = policy_mw_z_v9(eligible, K_free, state, slot, cfg);
+        txSlots = [txSlots, new_slots];
+
+    case 'mw-v9-nsw'
+        new_slots = policy_mw_v9_nsw(eligible, K_free, state, slot, cfg);
+        txSlots = [txSlots, new_slots];
+
     case 'mr-mw-ch-sw'
         new_slots = policy_mr_mw_ch_sw(eligible, K_free, state, slot, cfg);
         txSlots = [txSlots, new_slots];
@@ -310,6 +326,14 @@ switch policy_name
         info = policy_mw_sw_otimo_ch_info();
     case 'mw-sw-v8'
         info = policy_mw_sw_v8_info();
+    case 'mw-sw-v9'
+        info = policy_mw_sw_v9_info();
+    case 'mw-z'
+        info = policy_mw_z_info();
+    case 'mw-z-v9'
+        info = policy_mw_z_v9_info();
+    case 'mw-v9-nsw'
+        info = policy_mw_v9_nsw_info();
     case 'mr-mw-ch-sw'
         info = policy_mr_mw_ch_sw_info();
     case 'mw-sw-doc-g-u'

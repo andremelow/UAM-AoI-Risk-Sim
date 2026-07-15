@@ -50,6 +50,16 @@ ap.add_argument("--window", choices=["flight", "steady"], default="flight",
                      "(discards warm-up ramp, tighter frontier)")
 ap.add_argument("--pol", default="round-robin-sw,pf-classic-sw,mr-mw-ch-sw,max-risk-pf-sw",
                 help="comma-separated policy list (e.g. add mw-sw-v8 after merging RC9)")
+ap.add_argument("--exclude-ramps", action="store_true",
+                help="mask BOTH ramps (first and final 500 m of each UAV's route: "
+                     "climb-out and landing outage spikes); suffix _noramps")
+ap.add_argument("--exclude-landing", action="store_true",
+                help="mask each UAV's landing ramp (final 500 m of its route, "
+                     "outage-driven risk spike) before computing R̄_u and the "
+                     "exceedance; output files get the _noland suffix")
+ap.add_argument("--outbound", action="store_true",
+                help="restrict to OUTBOUND drones (RouteA/RouteBhalf: first half "
+                     "of each corridor's contiguous id block); suffix _outbound")
 ap.add_argument("--cached", action="store_true")
 args = ap.parse_args()
 
@@ -57,14 +67,16 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR   = os.path.join(SCRIPT_DIR, args.dir)
 OUT_DIR    = os.path.join(DATA_DIR, "plots")
 os.makedirs(OUT_DIR, exist_ok=True)
-STATS_CSV  = os.path.join(OUT_DIR, "tls_companion_stats.csv")
+LTAG       = "_noramps" if args.exclude_ramps else ("_noland" if args.exclude_landing else "")
+LTAG      += "_outbound" if args.outbound else ""
+STATS_CSV  = os.path.join(OUT_DIR, f"tls_companion_stats{LTAG}.csv")
 
 K_VALUES = [1, 2, 4, 8, 16, 32]
 C_VALUES = [5, 10, 20, 40, 60, 80, 100, 120]
 POL       = [p for p in args.pol.split(",") if p]
 POL_LABEL = {"round-robin-sw": "RR", "pf-classic-sw": "PF", "mr-mw-ch-sw": "Risk-Aware",
              "max-risk-pf-sw": "Risk-PF", "mw-sw-otimo-ch": "MW-opt (sw)",
-             "mw-otimo-ch": "MW-opt", "mw-sw-v8": "MW-V8"}
+             "mw-otimo-ch": "MW-opt", "mw-sw-v8": "MW-V8", "mw-sw-v9": "MW-V9", "mw-v9-nsw": "MW-V9-nsw"}
 
 # ---- IEEE single-column style (IEEEtran-compatible, grayscale-safe via cell numbers + contour) ----
 plt.rcParams.update({
@@ -97,6 +109,19 @@ def per_uav_steady(K, C, pol):
         return None
     df = pd.read_csv(ss, usecols=["slot", "drone_id", "r_tot"],
                      dtype={"slot": np.int32, "drone_id": np.int32, "r_tot": np.float32})
+    if args.exclude_landing or args.exclude_ramps:
+        # 500 m ramps masked (low-altitude outage spikes); corridor A (8 km)
+        # vs B (4.264 km) classified by flight duration
+        meta = pd.read_csv(ds, usecols=["drone_id", "entry_slot", "exit_slot"])
+        meta["dur"] = meta.exit_slot - meta.entry_slot
+        frac = np.where(meta.dur > meta.dur.min() * 1.5, 500.0/8000.0, 500.0/4264.4)
+        meta["hi"] = meta.entry_slot + ((1.0 - frac) * meta.dur).astype(int)
+        meta["lo"] = meta.entry_slot + (frac * meta.dur).astype(int)
+        df = df.merge(meta[["drone_id", "lo", "hi"]], on="drone_id")
+        df = df[df.slot < df.hi]
+        if args.exclude_ramps:
+            df = df[df.slot > df.lo]
+        df = df.drop(columns=["lo", "hi"])
     if args.window == "steady":
         nact = df.groupby("slot").drone_id.size()
         thr = C if (nact >= C).any() else max(1, int(0.9 * nact.max()))
@@ -109,7 +134,7 @@ def per_uav_steady(K, C, pol):
     rbar = g.r_tot.mean()                                   # R̄_u : per-UAV time-average
     frac = g.r_tot.apply(lambda s: float((s > args.tls).mean()))  # P_t(R_u>TLS) per UAV
     n    = g.r_tot.size()
-    if args.window == "flight":
+    if args.window == "flight" and not (args.exclude_landing or args.exclude_ramps):
         # prefer the simulator's own per-UAV mean over the whole flight, if available
         try:
             ms = pd.read_csv(ds, usecols=["drone_id", "mean_r_tot"]).set_index("drone_id")["mean_r_tot"]
@@ -117,7 +142,15 @@ def per_uav_steady(K, C, pol):
         except Exception:
             pass
     keep = n >= args.min_slots
-    return pd.DataFrame({"rbar": rbar[keep], "frac": frac[keep]})
+    out = pd.DataFrame({"rbar": rbar[keep], "frac": frac[keep]})
+    if args.outbound:
+        meta = pd.read_csv(ds, usecols=["drone_id", "entry_slot", "exit_slot"])
+        meta["dur"] = meta.exit_slot - meta.entry_slot
+        long_ids  = sorted(meta[meta.dur > meta.dur.min() * 1.5].drone_id)
+        short_ids = sorted(meta[~(meta.dur > meta.dur.min() * 1.5)].drone_id)
+        ob = set(long_ids[:len(long_ids)//2]) | set(short_ids[:len(short_ids)//2])
+        out = out[out.index.isin(ob)]
+    return out
 
 # ------------------------------------------------------------------ build/load stats
 if args.cached and os.path.exists(STATS_CSV):
@@ -186,7 +219,7 @@ for pi, pol in enumerate(POL):
 # colorbar removed (values are printed in every cell)
 # value label on the right, where the colorbar used to be (vertical)
 fig.text(1.005, 0.5, r"$\max_u \bar R_u$", rotation=90, va="center", ha="center", fontsize=10)
-WTAG = "" if args.window == "flight" else f"_{args.window}"
+WTAG = ("" if args.window == "flight" else f"_{args.window}") + LTAG
 base = os.path.join(OUT_DIR, f"tls_companion_maxRbar{WTAG}")
 for ext in ("pdf", "png"):
     fig.savefig(f"{base}.{ext}", bbox_inches="tight")

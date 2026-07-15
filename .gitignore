@@ -17,6 +17,9 @@ ref/
 codegen/
 slprj/
 
+# Python artefatos
+__pycache__/
+
 # R artefatos
 .Rhistory
 .RData

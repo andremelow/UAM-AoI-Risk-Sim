@@ -58,7 +58,20 @@ for u = state.activeDrones
         state.dual(u).vid_L         = state.dual(u).vid_pending_L;
         state.dual(u).vid_pending   = false;
     end
-    % C2: generate-at-will — always has a fresh packet available.
-    % No explicit state needed; delivery is handled in step_transmit.
+    % C2 generation timestamp:
+    %   c2_hz <= 0 (slots_per_c2 == 0): generate-at-will — amostra sempre
+    %       fresca, c2_gen_slot = slot corrente -> h1 reseta a 0 na entrega.
+    %   c2_hz  > 0: geração PERIÓDICA — nova amostra a cada slots_per_c2 slots;
+    %       c2_gen_slot guarda o timestamp da amostra mais recente, então na
+    %       entrega h1 = slot - c2_gen_slot (idade da amostra retida).
+    if cfg.slots_per_c2 > 0
+        while slot >= state.dual(u).c2_next_gen_slot
+            state.dual(u).c2_gen_slot      = slot;
+            state.dual(u).c2_next_gen_slot = ...
+                state.dual(u).c2_next_gen_slot + cfg.slots_per_c2;
+        end
+    else
+        state.dual(u).c2_gen_slot = slot;   % generate-at-will
+    end
 end
 end

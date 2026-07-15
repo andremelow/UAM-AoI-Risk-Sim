@@ -21,6 +21,8 @@ LABEL = {
     "mw-sw-otimo-ch": "MW-opt (sw)",
     "mw-otimo-ch":    "MW-opt",
     "mw-sw-v8":       "MW-V8",
+    "mw-sw-v9":       "MW-V9",
+    "mw-v9-nsw":      "MW-V9-nsw",
 }
 # policy -> (color, linestyle, marker)   -- grayscale-safe
 STYLE = {
@@ -31,6 +33,8 @@ STYLE = {
     "mw-sw-otimo-ch": ("#555555", (0, (6, 2, 1, 2)), "v"),  # dark gray,  dash-dot-long, tri-down
     "mw-otimo-ch":    ("#8A8A8A", (0, (2, 1)),      "P"),   # mid gray,   short-dash, plus
     "mw-sw-v8":       ("#4F4F4F", (0, (5, 1)),      "X"),   # dark gray,  dense-dash, X
+    "mw-sw-v9":       ("#2B2B2B", (0, (3, 1, 1, 1)), "^"),  # near-black, dash-dot-dot, tri-up
+    "mw-v9-nsw":      ("#7A7A7A", (0, (2, 1, 1, 1)), "d"),  # gray, dot-dash, thin-diamond
 }
 
 # IEEE single-column typography: serif/Times, every text element >= 7 pt.

@@ -30,8 +30,9 @@ ap.add_argument("--dir", default="csv_export_RC8v8")
 ap.add_argument("--scenario", default="4r_b7")
 ap.add_argument("--pol", default="round-robin-sw,pf-classic-sw,mr-mw-ch-sw,mw-sw-v8",
                 help="comma-separated policy list")
-ap.add_argument("--risk", choices=["maxu", "sys"], default="maxu",
-                help="panel (c): maxu = max_u R̄_u (slot_series); sys = mean R̄_sys (summary)")
+ap.add_argument("--risk", choices=["maxu", "meanu", "sys"], default="maxu",
+                help="panel (c): maxu = max_u R̄_u; meanu = fleet-mean R̄_u "
+                     "(both from slot_series); sys = mean R̄_sys (summary)")
 args = ap.parse_args()
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -43,12 +44,12 @@ N_VALUES = [5, 10, 20, 40, 60, 80, 100, 120]
 POL       = [p for p in args.pol.split(",") if p]
 POL_LABEL = {"round-robin-sw": "RR", "pf-classic-sw": "PF", "mr-mw-ch-sw": "Risk-Aware",
              "max-risk-pf-sw": "Risk-PF", "mw-sw-otimo-ch": "MW-opt (sw)",
-             "mw-otimo-ch": "MW-opt", "mw-sw-v8": "MW-V8"}
+             "mw-otimo-ch": "MW-opt", "mw-sw-v8": "MW-V8", "mw-sw-v9": "MW-V9", "mw-v9-nsw": "MW-V9-nsw"}
 COLORS    = {"round-robin-sw": "#F9A825", "pf-classic-sw": "#E53935", "mr-mw-ch-sw": "#8E24AA",
              "max-risk-pf-sw": "#1E88E5", "mw-sw-otimo-ch": "#3949AB",
-             "mw-otimo-ch": "#6D4C41", "mw-sw-v8": "#00897B"}
+             "mw-otimo-ch": "#6D4C41", "mw-sw-v8": "#00897B", "mw-sw-v9": "#7CB342", "mw-v9-nsw": "#33691E"}
 MARKERS   = {"round-robin-sw": "o", "pf-classic-sw": "s", "mr-mw-ch-sw": "*",
-             "max-risk-pf-sw": "D", "mw-sw-otimo-ch": "v", "mw-otimo-ch": "P",
+             "max-risk-pf-sw": "D", "mw-sw-otimo-ch": "v", "mw-otimo-ch": "P", "mw-sw-v9": "^", "mw-v9-nsw": "v",
              "mw-sw-v8": "X"}
 
 def _runs(C, pol):
@@ -68,7 +69,8 @@ def cell(C, pol):
         g = df.groupby("drone_id")
         As.append(g.h1_slots.mean().mean())     # per-UAV time-mean, then mean over u
         Av.append(g.h2_slots.mean().mean())
-        Rs.append(g.r_tot.mean().max())          # per-UAV time-mean, then MAX over u
+        rb = g.r_tot.mean()                      # per-UAV time-mean R̄_u
+        Rs.append(rb.mean() if args.risk == "meanu" else rb.max())
     return float(np.mean(As)), float(np.mean(Av)), float(np.mean(Rs))
 
 A_s = {p: [] for p in POL}
@@ -114,6 +116,9 @@ axb.grid(True, which="both", ls="--", lw=0.5, alpha=0.4)
 axc.set_yscale("log")
 if args.risk == "sys":
     axc.set_ylabel(r"Mean system risk  $\bar R_{sys}$")
+elif args.risk == "meanu":
+    axc.set_ylabel(r"Fleet-mean risk  $\mathrm{mean}_u\, \bar R_u$")
+    axc.axhline(1.0, ls=(0, (4, 3)), lw=1.0, color="0.35")
 else:
     axc.set_ylabel(r"$\max_u \bar R_u$")
     axc.axhline(1.0, ls=(0, (4, 3)), lw=1.0, color="0.35")
@@ -141,7 +146,7 @@ axa.legend(handles=handles, ncol=min(len(POL), 4), loc="lower center",
 OUT_DIR = os.path.join(DATA_DIR, "plots")
 os.makedirs(OUT_DIR, exist_ok=True)
 base = os.path.join(OUT_DIR, "fig_impossibility_K1_aoi_split"
-                    + ("_rsys" if args.risk == "sys" else ""))
+                    + {"sys": "_rsys", "meanu": "_meanu", "maxu": ""}[args.risk])
 fig.savefig(base + ".pdf", bbox_inches="tight")
 fig.savefig(base + ".png", dpi=200, bbox_inches="tight")
 print("saved", base + ".pdf")

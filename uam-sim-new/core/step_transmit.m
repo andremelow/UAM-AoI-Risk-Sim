@@ -57,13 +57,29 @@ for i = state.activeDrones
                 pkt_ok = false;
             end
 
+            % Tx error accounting per source: [att, outage_fail, bern_fail]
+            % outage_fail = SNR below threshold; bern_fail = in coverage but
+            % Bernoulli(p) miss. cols 1-3 = C2, cols 4-6 = video.
+            if ~isVideo
+                state.txStat(1) = state.txStat(1) + 1;
+                if ~snr_ok,     state.txStat(2) = state.txStat(2) + 1;
+                elseif ~pkt_ok, state.txStat(3) = state.txStat(3) + 1; end
+            else
+                state.txStat(4) = state.txStat(4) + 1;
+                if ~snr_ok,     state.txStat(5) = state.txStat(5) + 1;
+                elseif ~pkt_ok, state.txStat(6) = state.txStat(6) + 1; end
+            end
+
             if pkt_ok
                 state.txSuccess(i) = state.txSuccess(i) + 1;
 
                 if ~isVideo
                     state.slotsC2(i) = state.slotsC2(i) + 1;
                     state.avgThroughputC2(i) = 0.9*state.avgThroughputC2(i) + 0.1*cap_Mbps;
-                    state.dual(i).h1        = 0;
+                    % AoI reseta para a idade da amostra C2 retida:
+                    % generate-at-will -> c2_gen_slot=slot -> h1=0 (modelo atual);
+                    % periódico       -> h1 = slot - c2_gen_slot (idade > 0).
+                    state.dual(i).h1        = max(0, slot - state.dual(i).c2_gen_slot);
                     state.dual(i).lastRx_c2 = slot;
                     state.lastRxSlot(i)     = slot;
                     mu_s = 1;
@@ -128,6 +144,46 @@ for i = state.activeDrones
     state.dual(i).h1 = state.dual(i).h1 + 1;
     state.dual(i).h2 = state.dual(i).h2 + 1;
 
+    % --- MW-Z envelope virtual queue: after AoI aging ---
+    %  Z <- max(0, Z + Rhat - b_u).  Two Rhat modes:
+    %    mw-z-v9 : gradient alphas (same as policy_mw_z_v9) — position-aware
+    %    others  : constant alphas alpha=omega*(n_s, n_v) (policy_mw_z spec)
+    %  Updated for every policy (read only by mw-z*; logged for diagnosis).
+    om_i = cfg.omega(min(i, numel(cfg.omega)));
+    if strcmp(cfg.schedulingPolicy, 'mw-z-v9')
+        r_ui = state.aoiRadius(i);
+        if r_ui <= 0, r_ui = cfg.r_min; end
+        if ~isempty(state.riskMap{i})
+            R_gnd_i = state.riskMap{i}(end);
+        else
+            R_gnd_i = cfg.rho_0 * pi * cfg.r_min^2;
+        end
+        if state.dual(i).in_ramp
+            we_u = cfg.w_tol_unc; we_m = cfg.w_tol_map; we_v = cfg.w_tol_vid;
+        else
+            we_u = cfg.w_unc;     we_m = cfg.w_map;     we_v = cfg.w_vid;
+        end
+        v_i  = cfg.v_max / cfg.updateRate;
+        a_si = om_i * (we_u * cfg.C_Nav_1 + we_m * (2 * R_gnd_i * v_i / r_ui));
+        a_vi = om_i * we_v / cfg.H_nom_slots;
+        Rhat = a_si * state.dual(i).h1 + a_vi * state.dual(i).h2;
+    else
+        Rhat = om_i * (cfg.n_s * state.dual(i).h1 + cfg.n_v * state.dual(i).h2);
+    end
+    b_i  = cfg.b_u(min(i, numel(cfg.b_u)));
+    state.Z_env(i) = max(0, state.Z_env(i) + Rhat - b_i);
+
+    % --- Video frame system time g_u (doc switching model) ---
+    %  g_u(t) = age of the frame currently in service = slot - vid_gen_slot
+    %  while a frame is loaded (vid_remaining > 0); 0 when idle. Tracked here
+    %  for logging/inspection; policy_mw_sw_doc_g_u recomputes it at decision
+    %  time from vid_gen_slot for exactness.
+    if state.dual(i).vid_remaining > 0
+        state.dual(i).g_u = max(slot - state.dual(i).vid_gen_slot, 0);
+    else
+        state.dual(i).g_u = 0;
+    end
+
     % --- AoI radius from C2 ---
     state.aoiRadius(i) = cfg.r_min + (cfg.v_max / cfg.updateRate) * state.dual(i).h1;
 
@@ -140,5 +196,6 @@ for i = state.activeDrones
     state.zuVal{i}(end+1)  = state.dual(i).z_u;
     state.xsVal{i}(end+1)  = state.dual(i).x_s;
     state.xvVal{i}(end+1)  = state.dual(i).x_v;
+    state.ZenvVal{i}(end+1) = state.Z_env(i);
 end
 end

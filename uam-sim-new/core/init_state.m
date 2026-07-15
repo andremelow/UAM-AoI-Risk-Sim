@@ -16,6 +16,13 @@ for u = N:-1:1
     state.dual(u).h1              = 0;
     state.dual(u).lastRx_c2       = NaN;
 
+    % C2 generation timestamp (Sec. C2 model). c2_gen_slot = slot em que a
+    % amostra C2 atualmente retida foi gerada. Em generate-at-will (c2_hz<=0)
+    % é sobrescrito para o slot corrente todo passo (step_traffic) -> h1
+    % reseta a 0 na entrega. Em modo periódico só avança a cada slots_per_c2.
+    state.dual(u).c2_gen_slot     = 0;
+    state.dual(u).c2_next_gen_slot = infra.startSlots(u);
+
     state.dual(u).h2              = 0;
     state.dual(u).lastRx_vid      = NaN;
     state.dual(u).vid_remaining   = 0;
@@ -29,6 +36,12 @@ for u = N:-1:1
                                               % buffer ready to be started.
     state.dual(u).vid_gen_slot    = 0;
     state.dual(u).vid_L           = 0;
+    state.dual(u).g_u             = 0;   % system time of in-service video frame
+                                          % (doc switching model): g_u(t) =
+                                          % slot - vid_gen_slot while a frame is
+                                          % loaded, 0 otherwise. Used by
+                                          % policy_mw_sw_doc_g_u to build the
+                                          % waiting/delivery proxies A_u, B_u.
     state.dual(u).vid_pending     = false;
     state.dual(u).vid_pending_slot = 0;
     state.dual(u).vid_pending_L   = 0;
@@ -83,6 +96,14 @@ end
 
 % --- Aggregate metrics ---
 state.rSysTime = []; state.rSysData = [];
+% Theoretical risk floors (AoI clamped to minimum), only filled when
+% cfg.computeRiskFloor is true. Absolute = perfect/instant updates (h->0,
+% z->0); Realizable = channel/frame-limited (h_s=1/p_s, z=L).
+state.rSysFloorAbs = []; state.rSysFloorReal = [];
+% Soma ponderada [R_nav, R_gnd, R_vid] (já com w_eff e omega) por fase, para
+% decompor o risco em cruzeiro vs rampa (takeoff/landing).
+state.riskCruise = [0 0 0];
+state.riskRamp   = [0 0 0];
 state.JhatTime = []; state.JhatData = [];
 state.uncMeanT = []; state.uncMeanV = [];
 state.mapMeanT = []; state.mapMeanV = [];
@@ -95,12 +116,17 @@ state.h1Time = cell(N,1); state.h1Val = cell(N,1);
 state.h2Time = cell(N,1); state.h2Val = cell(N,1);
 state.zuTime = cell(N,1); state.zuVal = cell(N,1);
 state.xsVal  = cell(N,1); state.xvVal = cell(N,1);
+state.ZenvVal = cell(N,1);
 for i = 1:N
     state.h1Time{i} = []; state.h1Val{i} = [];
     state.h2Time{i} = []; state.h2Val{i} = [];
     state.zuTime{i} = []; state.zuVal{i} = [];
     state.xsVal{i}  = []; state.xvVal{i} = [];
+    state.ZenvVal{i} = [];
 end
+
+% --- MW-Z envelope virtual queue (policy_mw_z) ---
+state.Z_env = zeros(N, 1);
 
 % --- Timing ---
 state.startTimes  = infra.startTimes;
@@ -109,6 +135,7 @@ state.startSlots  = infra.startSlots;
 state.endSlots    = infra.endSlots;
 
 % --- Scheduler ---
+state.txStat = zeros(1,6);   % [att_c2 outfail_c2 bern_c2 att_v outfail_v bern_v]
 state.rrPointer = 1;
 
 % --- Per-step transient ---

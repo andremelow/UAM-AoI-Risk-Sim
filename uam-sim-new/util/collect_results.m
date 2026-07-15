@@ -41,6 +41,7 @@ results.h1Time   = state.h1Time;   results.h1Val = state.h1Val;
 results.h2Time   = state.h2Time;   results.h2Val = state.h2Val;
 results.zuTime   = state.zuTime;   results.zuVal = state.zuVal;
 results.xsVal    = state.xsVal;    results.xvVal = state.xvVal;
+results.ZenvVal  = state.ZenvVal;
 
 % --- Counters ---
 results.txSuccess    = state.txSuccess;
@@ -62,15 +63,43 @@ results.txSuccSeries = state.txSuccSeries;
 results.txSuccSlots  = state.txSuccSlots;
 
 % --- Empirical objectives & optimality ratio ---
-%  Time-averages computed only over the steady-state portion (drop first 20%)
-T = numel(results.JhatData);
-warm = max(1, round(0.2 * T));
-if T > warm
-    results.Jhat_emp = mean(results.JhatData(warm:end));
-    results.Rsys_emp = mean(results.rSysData(warm:end));
+%  Time-averages/peaks computed over the STEADY (full-load) window only:
+%  the warm-up ramp (until C UAVs are simultaneously airborne) AND the drain
+%  tail (after the population falls back below C) both run at < C UAVs and bias
+%  the risk downward, so we keep only the [first-reach-C .. last-reach-C] span.
+%  Falls back to the legacy "drop first 20%" when capacity/entry data are absent.
+mask_r = steady_window(results.rSysTime, results.startSlots, results.endSlots, cfg);
+mask_j = steady_window(results.JhatTime, results.startSlots, results.endSlots, cfg);
+if any(mask_r)
+    results.Rsys_emp   = mean(results.rSysData(mask_r));
+    results.peak_r_sys = max(results.rSysData(mask_r));
+else
+    results.Rsys_emp = NaN;   results.peak_r_sys = NaN;
+end
+if any(mask_j)
+    results.Jhat_emp = mean(results.JhatData(mask_j));
 else
     results.Jhat_emp = NaN;
-    results.Rsys_emp = NaN;
+end
+
+% Theoretical risk floors (only populated when cfg.computeRiskFloor=true)
+results.rSysFloorAbs  = state.rSysFloorAbs;
+results.rSysFloorReal = state.rSysFloorReal;
+results.txStat        = state.txStat;
+results.riskCruise    = state.riskCruise;   % [nav gnd vid] ponderado, cruzeiro
+results.riskRamp      = state.riskRamp;      % [nav gnd vid] ponderado, rampa
+Tf = numel(state.rSysFloorAbs);
+if Tf == numel(results.rSysData) && any(mask_r)
+    % floors share rSysData's slot grid → reuse the same steady window
+    results.Rsys_floor_abs  = mean(state.rSysFloorAbs(mask_r));
+    results.Rsys_floor_real = mean(state.rSysFloorReal(mask_r));
+elseif Tf > 1
+    wf = max(1, round(0.2 * Tf));
+    results.Rsys_floor_abs  = mean(state.rSysFloorAbs(wf:end));
+    results.Rsys_floor_real = mean(state.rSysFloorReal(wf:end));
+else
+    results.Rsys_floor_abs  = NaN;
+    results.Rsys_floor_real = NaN;
 end
 
 % Lower bound (Sec. 5 of doc) and ratio
@@ -105,4 +134,38 @@ fprintf('  x_s final mean = %.2f   x_v final mean = %.2f\n', ...
         mean(arrayfun(@(u) state.dual(u).x_s, 1:N)), ...
         mean(arrayfun(@(u) state.dual(u).x_v, 1:N)));
 fprintf('===============================================\n\n');
+end
+
+
+function mask = steady_window(tslots, startSlots, endSlots, cfg)
+%STEADY_WINDOW  Logical mask selecting the full-load span of a slot-indexed series.
+%  Full load := >= C UAVs simultaneously airborne, C = cfg.corridorCapacity.
+%  Returns the contiguous [first .. last] span that reaches C (interior
+%  fluctuations kept; ramp-up and drain dropped).  Falls back to "drop first
+%  20%" when capacity or per-UAV entry/exit slots are unavailable.
+mask = false(size(tslots));
+T    = numel(tslots);
+if T == 0, return; end
+
+hasCap = isfield(cfg, 'corridorCapacity') && ~isempty(cfg.corridorCapacity) ...
+         && ~isempty(startSlots) && ~isempty(endSlots);
+if hasCap
+    t  = tslots(:);
+    ss = startSlots(:).';
+    ee = endSlots(:).';
+    ee(isnan(ee)) = inf;                       % unfinished UAVs stay active
+    active = sum(t >= ss & t <= ee, 2);        % # UAVs airborne per sample
+    thr = cfg.corridorCapacity;
+    if ~any(active >= thr)                     % plateau never quite reaches C
+        thr = max(1, floor(0.9 * max(active)));
+    end
+    hit = find(active >= thr);
+    if ~isempty(hit)
+        mask(hit(1):hit(end)) = true;
+        return;
+    end
+end
+
+warm = max(1, round(0.2 * T));                 % legacy fallback
+if T > warm, mask(warm:end) = true; end
 end

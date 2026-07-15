@@ -61,9 +61,9 @@ fprintf('═══════════════════════�
 if ~auto_confirm
     fprintf('This will run 3 sweeps sequentially:\n');
     fprintf('  1. Smoke test          — ~5 min  (skip with ''skip-smoke'')\n');
-    fprintf('  2. Sweep numDrones     — ~10h    (5 values × 5 policies)\n');
-    fprintf('  3. Sweep p_c2          — ~12h    (6 values × 5 policies)\n');
-    fprintf('  4. Sweep L_vid         — ~10h    (5 values × 5 policies)\n');
+    fprintf('  2. Sweep numDrones     — ~10h    (5 values × 6 policies)\n');
+    fprintf('  3. Sweep p_c2          — ~12h    (6 values × 6 policies)\n');
+    fprintf('  4. Sweep L_vid         — ~10h    (5 values × 6 policies)\n');
     fprintf('  Total: ~32h wall-clock.\n\n');
     fprintf('Press ENTER to continue, or Ctrl-C to abort.\n');
     pause;
@@ -99,7 +99,7 @@ if isempty(only_dim) || strcmp(only_dim, 'N')
     fprintf('  STEP 2/4: SWEEP numDrones\n');
     fprintf('──────────────────────────────────────────────────────────\n\n');
     sw_t0 = tic;
-    sc1.policies     = {'round-robin','round-robin-aware','aoi-pure','risk-aware','max-weight'};
+    sc1.policies     = {'round-robin','round-robin-aware','aoi-pure','risk-aware','max-weight','mw-z'};
     sc1.param_name   = 'numDrones';
     sc1.param_values = [1 5 10 15 20];
     sc1.base_cfg     = cfg_base;
@@ -115,7 +115,7 @@ if isempty(only_dim) || strcmp(only_dim, 'p')
     fprintf('  STEP 3/4: SWEEP p_c2\n');
     fprintf('──────────────────────────────────────────────────────────\n\n');
     sw_t0 = tic;
-    sc2.policies     = {'round-robin','round-robin-aware','aoi-pure','risk-aware','max-weight'};
+    sc2.policies     = {'round-robin','round-robin-aware','aoi-pure','risk-aware','max-weight','mw-z'};
     sc2.param_name   = 'p_c2';
     sc2.param_values = [0.5 0.6 0.7 0.8 0.9 0.95];
     sc2.base_cfg     = cfg_base;
@@ -132,7 +132,7 @@ if isempty(only_dim) || strcmp(only_dim, 'L')
     fprintf('  STEP 4/4: SWEEP L_vid\n');
     fprintf('──────────────────────────────────────────────────────────\n\n');
     sw_t0 = tic;
-    sc3.policies     = {'round-robin','round-robin-aware','aoi-pure','risk-aware','max-weight'};
+    sc3.policies     = {'round-robin','round-robin-aware','aoi-pure','risk-aware','max-weight','mw-z'};
     sc3.param_name   = 'L_vid';
     sc3.param_values = [1 5 10 20 30];
     sc3.base_cfg     = cfg_base;

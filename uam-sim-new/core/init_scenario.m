@@ -55,6 +55,10 @@ end
 use_tol_profile = isfield(cfg, 'altProfile') && ...
                   strcmp(cfg.altProfile, 'takeoff_landing');
 cruise_ned = -cfg.cruiseAlt;   % NED: negative = above ground
+pad_ned    = 0;                % pad altitude (elevated vertiport support)
+if isfield(cfg, 'padAlt') && ~isempty(cfg.padAlt)
+    pad_ned = -cfg.padAlt;
+end
 
 drones = cell(N, 1);
 for k = 1:N
@@ -67,10 +71,10 @@ for k = 1:N
         dir_k = (droneGoal(k,:) - droneStart(k,:)) / rl;   % unit vector [N,E]
         t_ramp = td / cfg.speedVal;                          % time to complete ramp
 
-        wp_s  = [droneStart(k,:) + [0 0],     0         ];  % start: ground
+        wp_s  = [droneStart(k,:) + [0 0],     pad_ned   ];  % start: pad
         wp_tc = [droneStart(k,:) + td*dir_k,  cruise_ned];  % top-of-climb
         wp_td = [droneGoal(k,:)  - td*dir_k,  cruise_ned];  % top-of-descent
-        wp_e  = [droneGoal(k,:)  + [0 0],     0         ];  % end: ground
+        wp_e  = [droneGoal(k,:)  + [0 0],     pad_ned   ];  % end: pad
 
         if td * 2 >= rl - 1e-6
             % Route shorter than 2×takeoffDist: no flat cruise segment

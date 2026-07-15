@@ -19,6 +19,8 @@ from matplotlib.lines import Line2D
 ap = argparse.ArgumentParser()
 ap.add_argument("--dir", default="csv_export_RC8v8")
 ap.add_argument("--scenario", default="4r_b7")
+ap.add_argument("--bottom", choices=["mean", "peak"], default="mean",
+                help="bottom row: mean system risk (default) or PEAK system risk")
 ap.add_argument("--pol", default="round-robin-sw,pf-classic-sw,mr-mw-ch-sw,mw-sw-v8",
                 help="comma-separated policy list")
 args = ap.parse_args()
@@ -31,14 +33,14 @@ os.makedirs(OUT_DIR, exist_ok=True)
 K_VALUES = [1, 2, 4, 8, 16, 32]
 C_VALUES = [5, 10, 20, 40, 60, 80, 100, 120]
 POL       = [p for p in args.pol.split(",") if p]
-POL_LABEL = {"round-robin-sw": "RR", "pf-classic-sw": "PF", "mr-mw-ch-sw": "Risk-Aware",
+POL_LABEL = {"mw-z": "MW-Z", "round-robin-sw": "RR", "pf-classic-sw": "PF", "mr-mw-ch-sw": "Risk-Aware",
              "max-risk-pf-sw": "Risk-PF", "mw-sw-otimo-ch": "MW-opt (sw)",
-             "mw-otimo-ch": "MW-opt", "mw-sw-v8": "MW-V8"}
-COLORS    = {"round-robin-sw": "#F9A825", "pf-classic-sw": "#E53935", "mr-mw-ch-sw": "#8E24AA",
+             "mw-otimo-ch": "MW-opt", "mw-sw-v8": "MW-V8", "mw-sw-v9": "MW-V9", "mw-v9-nsw": "MW-V9-nsw"}
+COLORS    = {"mw-z": "#1E88E5", "round-robin-sw": "#F9A825", "pf-classic-sw": "#E53935", "mr-mw-ch-sw": "#8E24AA",
              "max-risk-pf-sw": "#1E88E5", "mw-sw-otimo-ch": "#3949AB",
-             "mw-otimo-ch": "#6D4C41", "mw-sw-v8": "#00897B"}
-MARKERS   = {"round-robin-sw": "o", "pf-classic-sw": "s", "mr-mw-ch-sw": "*",
-             "max-risk-pf-sw": "D", "mw-sw-otimo-ch": "v", "mw-otimo-ch": "P",
+             "mw-otimo-ch": "#6D4C41", "mw-sw-v8": "#00897B", "mw-sw-v9": "#7CB342", "mw-v9-nsw": "#33691E"}
+MARKERS   = {"mw-z": "D", "round-robin-sw": "o", "pf-classic-sw": "s", "mr-mw-ch-sw": "*",
+             "max-risk-pf-sw": "D", "mw-sw-otimo-ch": "v", "mw-otimo-ch": "P", "mw-sw-v9": "^", "mw-v9-nsw": "v",
              "mw-sw-v8": "X"}
 
 def _first(pat):
@@ -67,9 +69,10 @@ for ci, K in enumerate(K_VALUES):
         # ---- top: fleet-mean R̄_u ----
         ys = np.array([mean_rbar(K, C, pol) for C in C_VALUES])
         axU.plot(C_VALUES, ys, color=COLORS[pol], marker=MARKERS[pol], ms=6, lw=2.0)
-        # ---- bottom: mean system risk ----
+        # ---- bottom: mean or peak system risk ----
         d = summ[(summ.K == K) & (summ.policy == pol)].sort_values("capacity")
-        axS.plot(d.capacity, d.mean_r_sys.values.astype(float),
+        ycol = d.peak_r_sys if args.bottom == "peak" else d.mean_r_sys
+        axS.plot(d.capacity, ycol.values.astype(float),
                  color=COLORS[pol], marker=MARKERS[pol], ms=5, lw=2.0, ls="--")
     axU.set_title(f"K = {K}", fontweight="bold")
     axU.set_yscale("log")
@@ -80,7 +83,8 @@ for ci, K in enumerate(K_VALUES):
     axS.set_yscale("log")
     if ci == 0:
         axU.set_ylabel(r"Fleet-mean risk  $\overline{R}_u$")
-        axS.set_ylabel(r"Mean system risk  $\bar R_{sys}$")
+        axS.set_ylabel(r"Peak risk  $R_{sys}$" if args.bottom == "peak"
+                       else r"Mean system risk  $\bar R_{sys}$")
     axU.grid(True, which="both", ls="--", alpha=0.4)
     axS.grid(True, which="both", ls="--", alpha=0.4)
 
@@ -88,7 +92,8 @@ handles = [Line2D([0], [0], color=COLORS[p], marker=MARKERS[p], lw=2, label=POL_
 fig.legend(handles=handles, ncol=len(handles), loc="lower center",
            bbox_to_anchor=(0.5, -0.04), frameon=False, fontsize=10)
 
-base = os.path.join(OUT_DIR, "risk_split_mean")
+base = os.path.join(OUT_DIR, "risk_split_mean"
+                    + ("_peak" if args.bottom == "peak" else ""))
 for ext in ("pdf", "png"):
     fig.savefig(f"{base}.{ext}", dpi=150, bbox_inches="tight")
     print("Saved:", f"{base}.{ext}")

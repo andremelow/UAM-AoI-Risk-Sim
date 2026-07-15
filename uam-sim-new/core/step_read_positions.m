@@ -49,8 +49,10 @@ for i = 1:N
             total_slots = max(state.endSlots(i) - state.startSlots(i), 1);
             s_frac      = (slot - state.startSlots(i)) / total_slots;
             s           = s_frac * infra.routeLen(i);
+            pad_alt = 0;
+            if isfield(cfg, 'padAlt') && ~isempty(cfg.padAlt), pad_alt = cfg.padAlt; end
             alt_ned     = altitude_profile_ned(s, infra.routeLen(i), ...
-                              cfg.cruiseAlt, cfg.takeoffDist);
+                              cfg.cruiseAlt, cfg.takeoffDist, pad_alt);
         else
             alt_ned = cruise_ned_default;
         end

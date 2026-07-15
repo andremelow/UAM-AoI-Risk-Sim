@@ -4,7 +4,7 @@ function export_csv(results, cfg, outDir)
 %  Generates three files in outDir:
 %
 %  1. <runId>_slot_series.csv   — per-slot time series (dense, one row per slot)
-%     Columns: slot, drone_id, h1_slots, h2_slots, snr_db, r_unc, r_map, r_vid,
+%     Columns: slot, drone_id, h1_slots, h2_slots, snr_db, r_unc, r_map, r_vid,  (+ z_env)
 %              r_tot, source_scheduled (0=none,1=C2,2=vid), tx_success
 %
 %  2. <runId>_drone_summary.csv — one row per drone, aggregated over flight
@@ -50,7 +50,7 @@ totalSlots = results.rSysTime(end);
 % =========================================================
 slotFile = fullfile(outDir, [runId '_slot_series.csv']);
 fid = safe_fopen(slotFile);
-fprintf(fid, 'slot,drone_id,h1_slots,h2_slots,snr_db,r_unc,r_map,r_vid,r_tot,source_sched,tx_success\n');
+fprintf(fid, 'slot,drone_id,h1_slots,h2_slots,snr_db,r_unc,r_map,r_vid,r_tot,source_sched,tx_success,z_u_slots,z_env\n');
 
 for u = 1:N
     if isempty(results.h1Time{u}), continue; end
@@ -84,12 +84,27 @@ for u = 1:N
         txs = nan(size(slots));
     end
 
+    % Coherence-window AoI z_u series (already captured in results.zuVal;
+    % previously not written to CSV). Aligned to the same slot grid.
+    if isfield(results, 'zuVal') && ~isempty(results.zuVal{u})
+        zu = interp_series(results.zuTime{u}, results.zuVal{u}, slots);
+    else
+        zu = nan(size(slots));
+    end
+
+    % MW-Z envelope virtual queue Z(u,t) — same slot grid as h1 (step_transmit)
+    if isfield(results, 'ZenvVal') && ~isempty(results.ZenvVal{u})
+        zenv = results.ZenvVal{u};
+    else
+        zenv = nan(size(slots));
+    end
+
     for k = 1:numel(slots)
-        fprintf(fid, '%d,%d,%.1f,%.1f,%.4f,%.6f,%.6f,%.6f,%.6f,%d,%d\n', ...
+        fprintf(fid, '%d,%d,%.1f,%.1f,%.4f,%.6f,%.6f,%.6f,%.6f,%d,%d,%.6f,%.6f\n', ...
             slots(k), u, h1(k), h2(k), ...
             safe_val(snr, k), safe_val(r_unc, k), safe_val(r_map, k), ...
             safe_val(r_vid, k), safe_val(r_tot, k), ...
-            safe_int(sched, k), safe_int(txs, k));
+            safe_int(sched, k), safe_int(txs, k), safe_val(zu, k), safe_val(zenv, k));
     end
 end
 fclose(fid);

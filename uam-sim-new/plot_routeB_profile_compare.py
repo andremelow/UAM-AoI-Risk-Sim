@@ -41,10 +41,10 @@ ROUTE_LEN = np.hypot(-700 - (-350), 14000 - 9750)   # ~4264 m
 POL    = [p for p in args.pol.split(",") if p]
 LABEL  = {"round-robin-sw": "RR", "pf-classic-sw": "PF", "mr-mw-ch-sw": "Risk-Aware",
           "max-risk-pf-sw": "Risk-PF", "mw-sw-otimo-ch": "MW-opt (sw)",
-          "mw-otimo-ch": "MW-opt", "mw-sw-v8": "MW-V8"}
+          "mw-otimo-ch": "MW-opt", "mw-sw-v8": "MW-V8", "mw-sw-v9": "MW-V9", "mw-v9-nsw": "MW-V9-nsw"}
 COLORS = {"round-robin-sw": "#F9A825", "pf-classic-sw": "#E53935", "mr-mw-ch-sw": "#8E24AA",
           "max-risk-pf-sw": "#1E88E5", "mw-sw-otimo-ch": "#3949AB",
-          "mw-otimo-ch": "#6D4C41", "mw-sw-v8": "#00897B"}
+          "mw-otimo-ch": "#6D4C41", "mw-sw-v8": "#00897B", "mw-sw-v9": "#7CB342", "mw-v9-nsw": "#33691E"}
 
 BASE = os.path.join(DATA, f"K{K}", f"C{C:02d}", SCEN)
 

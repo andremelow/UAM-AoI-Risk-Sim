@@ -105,6 +105,14 @@ for i = state.activeDrones
     state.dual(i).in_ramp = in_ramp;             % exposed for schedulers/analysis
     R_tot = w_eff_unc * R_nav + w_eff_map * R_gnd + w_eff_vid * R_vid;
 
+    % Decomposição do risco por fase (componentes ponderados por w_eff e omega)
+    contrib = cfg.omega(i) * [w_eff_unc*R_nav, w_eff_map*R_gnd, w_eff_vid*R_vid];
+    if in_ramp
+        state.riskRamp   = state.riskRamp   + contrib;
+    else
+        state.riskCruise = state.riskCruise + contrib;
+    end
+
     % ---- Linear surrogate Rhat_u (Sec. 3, final boxed) ----
     Rhat_u = cfg.n_s * state.dual(i).h1 + cfg.n_v * z_u;
 
@@ -141,5 +149,55 @@ if any(activeMask)
     Jhat_inst = sum(arrayfun(@(k) cfg.omega(k) * state.riskHat{k}(end), idx));
     state.JhatTime(end+1) = slot;
     state.JhatData(end+1) = Jhat_inst;
+
+    % --- Theoretical risk floors (risk model evaluated at AoI floor) ---
+    %  Same positions, but AoI clamped to its physical minimum, so the only
+    %  risk left is the irreducible positional/latency component (routing &
+    %  density), which no scheduler can reduce. Both are true lower bounds on
+    %  R_sys since R_u increases monotonically with AoI via r_u and z_u.
+    %    Absolute   : h_s->0 => r=r_min ; z->0 => R_vid=0  (perfect/instant)
+    %    Realizable : h_s=1/p_s => r=r_min+(v_max/updateRate)/p_s ;
+    %                 z=L => R_vid=max(L/H_nom-1,0)        (channel+frame limited)
+    if isfield(cfg, 'computeRiskFloor') && cfg.computeRiskFloor
+        r_abs     = cfg.r_min;
+        r_real    = cfg.r_min + (cfg.v_max / cfg.updateRate) / cfg.p_c2;
+        Rvid_real = max(cfg.L_vid / cfg.H_nom_slots - 1, 0);
+        Rsys_abs = 0; Rsys_real = 0;
+        for ii = 1:numel(idx)
+            i = idx(ii);
+            pos = state.pendingMsg{i}.pos;
+            Rnav_abs = 0; Rnav_real = 0;
+            for jj = 1:numel(idx)
+                j = idx(jj);
+                if j == i, continue; end
+                d = norm(pos(1:2) - state.activePos(j,1:2));
+                oa = 2*r_abs  - d;  if oa > 0, Rnav_abs  = Rnav_abs  + oa; end
+                orr= 2*r_real - d;  if orr> 0, Rnav_real = Rnav_real + orr; end
+            end
+            if isfield(cfg,'uniform_ground') && cfg.uniform_ground
+                rho_pos = cfg.rho_0;
+            else
+                rho_pos = interp2(mapGrid.XG(1,:), mapGrid.YG(:,1), mapGrid.rhoMap, ...
+                                  pos(1), pos(2), 'linear', 0);
+            end
+            Rgnd_abs = rho_pos * pi * r_abs^2;
+            Rgnd_real= rho_pos * pi * r_real^2;
+            if useNorm
+                Rnav_abs = Rnav_abs/cfg.R_bar_nav;  Rnav_real = Rnav_real/cfg.R_bar_nav;
+                Rgnd_abs = Rgnd_abs/cfg.R_bar_gnd;  Rgnd_real = Rgnd_real/cfg.R_bar_gnd;
+            end
+            % phase-aware weights (consistent with R_sys under takeoff/landing)
+            if isfield(cfg,'altProfile') && strcmp(cfg.altProfile,'takeoff_landing') ...
+               && (-pos(3) < cfg.cruiseAlt - 1e-3)
+                we_u = cfg.w_tol_unc; we_m = cfg.w_tol_map; we_v = cfg.w_tol_vid;
+            else
+                we_u = cfg.w_unc; we_m = cfg.w_map; we_v = cfg.w_vid;
+            end
+            Rsys_abs  = Rsys_abs  + cfg.omega(i)*(we_u*Rnav_abs  + we_m*Rgnd_abs);
+            Rsys_real = Rsys_real + cfg.omega(i)*(we_u*Rnav_real + we_m*Rgnd_real + we_v*Rvid_real);
+        end
+        state.rSysFloorAbs(end+1)  = Rsys_abs;
+        state.rSysFloorReal(end+1) = Rsys_real;
+    end
 end
 end

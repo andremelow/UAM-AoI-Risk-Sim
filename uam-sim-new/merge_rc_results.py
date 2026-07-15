@@ -20,18 +20,19 @@ import pandas as pd
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--base",  default="csv_export_RC8")
-ap.add_argument("--extra", default="csv_export_RC9")
+ap.add_argument("--extra", nargs="+", default=["csv_export_RC9"],
+                help="one or more extra export dirs to overlay on --base")
 ap.add_argument("--out",   default="csv_export_RC8v8")
 args = ap.parse_args()
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE  = os.path.join(SCRIPT_DIR, args.base)
-EXTRA = os.path.join(SCRIPT_DIR, args.extra)
+ROOTS = [BASE] + [os.path.join(SCRIPT_DIR, e) for e in args.extra]
 OUT   = os.path.join(SCRIPT_DIR, args.out)
 
 n_link = 0
 cells = set()
-for root in (BASE, EXTRA):
+for root in ROOTS:
     if not os.path.isdir(root):
         print(f"WARNING: {root} not found, skipping")
         continue
@@ -49,11 +50,11 @@ for root in (BASE, EXTRA):
         n_link += 1
 print(f"linked {n_link} per-run CSVs into {OUT}")
 
-# per-cell summary.csv: concat rows of base+extra
+# per-cell summary.csv: concat rows of all roots
 n_cell = 0
 for cell in sorted(cells):
     parts = []
-    for root in (BASE, EXTRA):
+    for root in ROOTS:
         p = os.path.join(root, cell, "summary.csv")
         if os.path.exists(p):
             parts.append(pd.read_csv(p))
@@ -65,7 +66,7 @@ print(f"merged {n_cell} per-cell summary.csv")
 
 # master sweep summary: concat
 parts = []
-for root in (BASE, EXTRA):
+for root in ROOTS:
     p = os.path.join(root, "sweep_summary_all.csv")
     if os.path.exists(p):
         parts.append(pd.read_csv(p))

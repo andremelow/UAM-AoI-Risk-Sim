@@ -43,6 +43,9 @@ defaults.maxStartDelay   = 50;
 defaults.altProfile    = 'fixed';
 defaults.cruiseAlt     = 60;    % metres AGL  (fixed mode default)
 defaults.takeoffDist   = 60;    % metres horizontal for takeoff/landing ramp
+defaults.padAlt        = 0;     % metres AGL of the takeoff/landing pad (drone
+                                % starts/ends at this altitude; ramps go
+                                % padAlt <-> cruiseAlt)
 
 % --- Phase-aware risk weights (takeoff/landing ramp) ---
 %   During takeoff/landing the drone is at low altitude and close to people;
@@ -89,6 +92,12 @@ defaults.L_I             = 30;
 defaults.L_P             = 3;
 defaults.L_vid           = 1;          % atomic-frame size [packets/slots]
 defaults.L_c2            = 1;
+% C2 (status/telemetry) generation:
+%   -1  -> generate-at-will: amostra sempre fresca (modelo Kadota, padrão).
+%   >0  -> geração PERIÓDICA a c2_hz Hz: uma nova amostra a cada
+%          slots_per_c2 = updateRate/c2_hz slots; na entrega, h1 reseta para
+%          a IDADE da amostra retida (slot - c2_gen_slot), não para 0.
+defaults.c2_hz           = -1;
 defaults.w_coh           = 5;
 defaults.L_nom           = 0.010;      % nominal one-way latency [s]
 defaults.p_c2            = 0.8;        % per-slot status success probability
@@ -166,9 +175,31 @@ cfg.v_max        = cfg.speedVal;
 cfg.frame_interval  = 1 / cfg.fps;
 cfg.slots_per_frame = cfg.updateRate / cfg.fps;
 
+% C2 generation period in slots: 0 = generate-at-will (c2_hz <= 0).
+if isfield(cfg, 'c2_hz') && cfg.c2_hz > 0
+    cfg.slots_per_c2 = cfg.updateRate / cfg.c2_hz;
+else
+    cfg.slots_per_c2 = 0;   % sentinela: sempre fresco
+end
+
 % H_nom in slots (eq. for H_nom in the doc / Sec. 2)
 L_nom_slots     = cfg.L_nom * cfg.updateRate;
 cfg.H_nom_slots = L_nom_slots + 2*(cfg.w_coh - 1) * cfg.slots_per_frame / 3;
+
+% --- Normalized-model video reference (RC6) ---------------------------
+% Under use_normalization, the video risk R^vid=[z/H_nom-1]^+ must reference
+% a PHYSICAL nominal frame period. At updateRate=7 the native slots_per_frame
+% (=updateRate/fps=0.233) is sub-slot, which crushes H_nom (~0.69) and makes
+% R^vid explode (~2000x) — video would dominate the normalized R_u purely by
+% timescale artifact. We reference the nominal window to the 1ms-slot logic
+% (a 30fps frame every 33.3 slots), giving H_nom~89 slots so R^vid becomes
+% commensurable with the normalized ground term. This decouples the RISK
+% reference from the 7Hz decision epoch; it does NOT change video generation
+% or the z_u delivery dynamics (a caveat: z_u still reflects the 7Hz cadence).
+if isfield(cfg,'use_normalization') && cfg.use_normalization
+    spf_nom = 1000 / cfg.fps;   % 33.3 slots/frame @ 1ms slot (30fps)
+    cfg.H_nom_slots = L_nom_slots + 2*(cfg.w_coh - 1) * spf_nom / 3;
+end
 
 % Coherence weights alpha_i (decreasing, sum to 1)
 cfg.alpha_w = zeros(cfg.w_coh, 1);
@@ -189,15 +220,33 @@ else
     N_eff = cfg.numDrones;
 end
 
-% --- Normalization references R_bar_nav, R_bar_gnd (legacy) ---
-n_sources    = 2 * N_eff;
-h_star_slots = n_sources / cfg.p_c2;
-h_star_s     = h_star_slots / cfg.updateRate;
-r_star       = cfg.r_min + cfg.v_max * h_star_s;
+% --- Normalization references R_bar_nav, R_bar_gnd ---
+if isfield(cfg,'use_normalization') && cfg.use_normalization ...
+        && isfield(cfg,'corridorWidth') && isfield(cfg,'rho_op')
+    % Paper eq (10-11): FIXED corridor design point (não depende de C nem K).
+    %   r* = r_min + v_max/λ  (λ = c2_hz, AoI nominal h*=1/λ)
+    %   N* = ⌊L_c·W_c/(4 r_min²)⌋   (capacidade geométrica do corredor)
+    %   R̄_Nav = (N*-1)[2r*-d_min]^+ ;  R̄_Ground = ρ_op·π·r*²
+    % Densidade: campo ρ∈[0,1] com pico ≡ ρ_op (São Paulo, 5000 inhab/km²),
+    % então ρ_op cancela e R̄_Ground = π·r*² (R̃_Ground=1 no ponto nominal).
+    lam_nom  = cfg.c2_hz;
+    r_star   = cfg.r_min + cfg.v_max / lam_nom;
+    d_min    = 2 * cfg.r_min;
+    N_star   = max(2, floor(cfg.corridorLength * cfg.corridorWidth / (4*cfg.r_min^2)));
+    cfg.R_bar_nav   = max((N_star - 1) * max(2*r_star - d_min, 0), 1e-15);
+    cfg.R_bar_gnd   = max(pi * r_star^2, 1e-15);
+    cfg.r_star_norm = r_star;   cfg.N_star_norm = N_star;
+else
+    % Legacy (worst-case RR, load-dependent) — usado só por experimentos crus.
+    n_sources    = 2 * N_eff;
+    h_star_slots = n_sources / cfg.p_c2;
+    h_star_s     = h_star_slots / cfg.updateRate;
+    r_star       = cfg.r_min + cfg.v_max * h_star_s;
 
-d_min          = 2 * cfg.r_min;
-cfg.R_bar_nav  = max((N_eff - 1) * max(2*r_star - d_min, 0), 1e-15);
-cfg.R_bar_gnd  = max(cfg.rho_0 * pi * r_star^2, 1e-15);
+    d_min          = 2 * cfg.r_min;
+    cfg.R_bar_nav  = max((N_eff - 1) * max(2*r_star - d_min, 0), 1e-15);
+    cfg.R_bar_gnd  = max(cfg.rho_0 * pi * r_star^2, 1e-15);
+end
 
 % =====================================================================
 % Phase 1 -- Linear risk surrogate coefficients (Sec. 3 of doc)
@@ -235,9 +284,31 @@ cfg.C_Gnd_1 = cfg.rho_0 * pi * ( ...
               2*cfg.r_min*v_max_m_per_slot ...
             + (v_max_m_per_slot^2)*cfg.H_max);
 
+% Under normalization, express the surrogate slopes in the SAME normalized
+% units as R_nav/R_gnd (÷R̄), so schedulers that mix C_Nav_1 with the
+% normalized state risk (e.g. mr-mw-ch-sw: α_s = w·C_Nav_1 + w·2R̃_gnd·v/r_u)
+% stay on one coherent scale. R_vid is already dimensionless → n_v unchanged.
+if isfield(cfg,'use_normalization') && cfg.use_normalization
+    cfg.C_Nav_0 = cfg.C_Nav_0 / cfg.R_bar_nav;
+    cfg.C_Nav_1 = cfg.C_Nav_1 / cfg.R_bar_nav;
+    cfg.C_Gnd_0 = cfg.C_Gnd_0 / cfg.R_bar_gnd;
+    cfg.C_Gnd_1 = cfg.C_Gnd_1 / cfg.R_bar_gnd;
+end
+
 % Linear surrogate coefficients (Sec. 3, final boxed form)
 cfg.n_s = cfg.w_unc * cfg.C_Nav_1 + cfg.w_map * cfg.C_Gnd_1;
 cfg.n_v = cfg.w_vid / cfg.H_nom_slots;
+% Optional rebalance of the video surrogate slope (sweep n_v vs n_s).
+% n_v_scale=1 (default) keeps the doc value; >1 boosts video priority.
+if isfield(cfg, 'n_v_scale') && ~isempty(cfg.n_v_scale)
+    cfg.n_v = cfg.n_v * cfg.n_v_scale;
+end
+% Density-coupled video coefficient: n_v = k * n_s. Since n_s grows with
+% drone density (C_Nav_1 ∝ N-1), this makes n_v auto-scale with density,
+% keeping the n_v/n_s balance constant across C. Overrides n_v entirely.
+if isfield(cfg, 'n_v_ratio') && ~isempty(cfg.n_v_ratio)
+    cfg.n_v = cfg.n_v_ratio * cfg.n_s;
+end
 
 % policy_max_weight_drift parameters (Sec. 2).
 % beta_s / beta_v default to the same surrogate coefficients as n_s / n_v.
@@ -250,6 +321,12 @@ if ~isfield(cfg, 'beta_v') || isempty(cfg.beta_v)
 end
 if ~isfield(cfg, 'V') || isempty(cfg.V)
     cfg.V = cfg.V_s;   % V_s default is 1.0
+end
+
+% policy_mw_z envelope budget b_u [normalized R units per slot].
+% Scalar or per-drone vector; indexed with min(u, numel(b_u)).
+if ~isfield(cfg, 'b_u') || isempty(cfg.b_u)
+    cfg.b_u = 1;
 end
 
 % =====================================================================
