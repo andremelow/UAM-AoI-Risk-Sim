@@ -17,6 +17,8 @@ state.activePos    = zeros(N, 3);
 
 use_precomputed = isfield(infra, 'precomputed_trajectory') && ...
                   ~isempty(infra.precomputed_trajectory);
+use_analytic    = isfield(cfg, 'positionEngine') && ...
+                  strcmp(cfg.positionEngine, 'analytic');
 
 % Altitude mode: profile-aware for A* trajectories.
 use_tol_profile = isfield(cfg, 'altProfile') && ...
@@ -58,6 +60,29 @@ for i = 1:N
         end
 
         pos = [traj(t_local, 1), traj(t_local, 2), alt_ned, 1, 0, 0, 0];
+
+    elseif use_analytic
+        % Closed-form position: constant ground speed along start→goal,
+        % altitude from the same profile used to build the engine waypoints.
+        rl = infra.routeLen(i);
+        s  = min(max((time - infra.startTimes(i)) * cfg.speedVal, 0), rl);
+        if rl > 0
+            dir_i = (infra.droneGoal(i,:) - infra.droneStart(i,:)) / rl;
+        else
+            dir_i = [0 0];
+        end
+        ne = infra.droneStart(i,:) + s * dir_i;   % [North, East]
+
+        if use_tol_profile && rl > 0
+            pad_alt = 0;
+            if isfield(cfg, 'padAlt') && ~isempty(cfg.padAlt), pad_alt = cfg.padAlt; end
+            alt_ned = altitude_profile_ned(s, rl, ...
+                          cfg.cruiseAlt, cfg.takeoffDist, pad_alt);
+        else
+            alt_ned = cruise_ned_default;
+        end
+
+        pos = [ne(1), ne(2), alt_ned, 1, 0, 0, 0];
 
     else
         [pos, ~] = read(drones{i});

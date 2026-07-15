@@ -47,6 +47,16 @@ defaults.padAlt        = 0;     % metres AGL of the takeoff/landing pad (drone
                                 % starts/ends at this altitude; ramps go
                                 % padAlt <-> cruiseAlt)
 
+% --- Position engine ---
+%   'uav-toolbox' : uavScenario/uavPlatform drives time and positions
+%                   (legacy; requires UAV Toolbox, pays advance()+read()
+%                   per drone per slot)
+%   'analytic'    : positions computed in closed form from the route
+%                   geometry (constant ground speed along start→goal +
+%                   altitude_profile_ned ramps); plain slot-counter loop,
+%                   no uavScenario objects. Headless only.
+defaults.positionEngine = 'uav-toolbox';
+
 % --- Phase-aware risk weights (takeoff/landing ramp) ---
 %   During takeoff/landing the drone is at low altitude and close to people;
 %   video surveillance is most critical → w_tol_vid >> w_tol_unc, w_tol_map.
@@ -163,6 +173,14 @@ cfg.videoModel = lower(strtrim(cfg.videoModel));
 if ~ismember(cfg.videoModel, {'atomic','gop'})
     error('UAM:config', ...
         'cfg.videoModel must be ''atomic'' or ''gop'' (got: %s).', cfg.videoModel);
+end
+
+% --- Validate positionEngine ---
+cfg.positionEngine = lower(strtrim(cfg.positionEngine));
+if ~ismember(cfg.positionEngine, {'uav-toolbox','analytic'})
+    error('UAM:config', ...
+        'cfg.positionEngine must be ''uav-toolbox'' or ''analytic'' (got: %s).', ...
+        cfg.positionEngine);
 end
 
 % --- Derived radio / kinematic fields ---

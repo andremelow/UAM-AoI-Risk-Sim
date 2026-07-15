@@ -36,72 +36,87 @@ flightTimes = routeLen / cfg.speedVal;
 endTimes    = startTimes + flightTimes;
 stopTime    = max(endTimes) + 2 / cfg.updateRate;
 
-% --- Scene ---
-nBS = size(cfg.microBSPos, 1);
-scene = uavScenario( ...
-    UpdateRate   = cfg.updateRate, ...
-    StopTime     = stopTime, ...
-    MaxNumFrames = N + nBS + 10);   % drones + BSs + margem
+use_engine = ~isfield(cfg, 'positionEngine') || ...
+             strcmp(cfg.positionEngine, 'uav-toolbox');
 
-% --- Base stations ---
-for i = 1:size(cfg.microBSPos, 1)
-    bs = uavPlatform("BS"+i, scene, InitialPosition=cfg.microBSPos(i,:));
-    updateMesh(bs,"cuboid",{[30 30 30]},[0 0 1],[0 0 30],[1 0 0 0]);
-end
+if use_engine
+    % --- Scene ---
+    nBS = size(cfg.microBSPos, 1);
+    scene = uavScenario( ...
+        UpdateRate   = cfg.updateRate, ...
+        StopTime     = stopTime, ...
+        MaxNumFrames = N + nBS + 10);   % drones + BSs + margem
 
-% --- Drone platforms ---
-% NOTE: startTimes/endTimes were computed with a seeded RNG inside
-% generate_arrival_times — do NOT call it again here (reproducibility).
-use_tol_profile = isfield(cfg, 'altProfile') && ...
-                  strcmp(cfg.altProfile, 'takeoff_landing');
-cruise_ned = -cfg.cruiseAlt;   % NED: negative = above ground
-pad_ned    = 0;                % pad altitude (elevated vertiport support)
-if isfield(cfg, 'padAlt') && ~isempty(cfg.padAlt)
-    pad_ned = -cfg.padAlt;
-end
-
-drones = cell(N, 1);
-for k = 1:N
-    rl = routeLen(k);
-
-    if use_tol_profile && rl > 0
-        % 4-waypoint trajectory: ground → cruise → cruise → ground.
-        % Ramp distance capped at half the route so takeoff/landing never overlap.
-        td = min(cfg.takeoffDist, rl / 2);
-        dir_k = (droneGoal(k,:) - droneStart(k,:)) / rl;   % unit vector [N,E]
-        t_ramp = td / cfg.speedVal;                          % time to complete ramp
-
-        wp_s  = [droneStart(k,:) + [0 0],     pad_ned   ];  % start: pad
-        wp_tc = [droneStart(k,:) + td*dir_k,  cruise_ned];  % top-of-climb
-        wp_td = [droneGoal(k,:)  - td*dir_k,  cruise_ned];  % top-of-descent
-        wp_e  = [droneGoal(k,:)  + [0 0],     pad_ned   ];  % end: pad
-
-        if td * 2 >= rl - 1e-6
-            % Route shorter than 2×takeoffDist: no flat cruise segment
-            waypoints = [wp_s; wp_tc; wp_e];
-            times     = [startTimes(k), startTimes(k) + t_ramp, endTimes(k)];
-        else
-            waypoints = [wp_s; wp_tc; wp_td; wp_e];
-            times     = [startTimes(k), ...
-                         startTimes(k) + t_ramp, ...
-                         endTimes(k)   - t_ramp, ...
-                         endTimes(k)];
-        end
-        traj = waypointTrajectory(waypoints, TimeOfArrival=times);
-    else
-        p1   = [droneStart(k,1), droneStart(k,2), cruise_ned];
-        p2   = [droneGoal(k,1),  droneGoal(k,2),  cruise_ned];
-        traj = waypointTrajectory([p1; p2], TimeOfArrival=[startTimes(k) endTimes(k)]);
+    % --- Base stations ---
+    for i = 1:size(cfg.microBSPos, 1)
+        bs = uavPlatform("BS"+i, scene, InitialPosition=cfg.microBSPos(i,:));
+        updateMesh(bs,"cuboid",{[30 30 30]},[0 0 1],[0 0 30],[1 0 0 0]);
     end
 
-    drones{k} = uavPlatform("UAV"+k, scene, Trajectory=traj);
-    updateMesh(drones{k},"quadrotor",{4},[.2 .2 .2],[0 0 0],[1 0 0 0]);
+    % --- Drone platforms ---
+    % NOTE: startTimes/endTimes were computed with a seeded RNG inside
+    % generate_arrival_times — do NOT call it again here (reproducibility).
+    use_tol_profile = isfield(cfg, 'altProfile') && ...
+                      strcmp(cfg.altProfile, 'takeoff_landing');
+    cruise_ned = -cfg.cruiseAlt;   % NED: negative = above ground
+    pad_ned    = 0;                % pad altitude (elevated vertiport support)
+    if isfield(cfg, 'padAlt') && ~isempty(cfg.padAlt)
+        pad_ned = -cfg.padAlt;
+    end
+
+    drones = cell(N, 1);
+    for k = 1:N
+        rl = routeLen(k);
+
+        if use_tol_profile && rl > 0
+            % 4-waypoint trajectory: ground → cruise → cruise → ground.
+            % Ramp distance capped at half the route so takeoff/landing never overlap.
+            td = min(cfg.takeoffDist, rl / 2);
+            dir_k = (droneGoal(k,:) - droneStart(k,:)) / rl;   % unit vector [N,E]
+            t_ramp = td / cfg.speedVal;                          % time to complete ramp
+
+            wp_s  = [droneStart(k,:) + [0 0],     pad_ned   ];  % start: pad
+            wp_tc = [droneStart(k,:) + td*dir_k,  cruise_ned];  % top-of-climb
+            wp_td = [droneGoal(k,:)  - td*dir_k,  cruise_ned];  % top-of-descent
+            wp_e  = [droneGoal(k,:)  + [0 0],     pad_ned   ];  % end: pad
+
+            if td * 2 >= rl - 1e-6
+                % Route shorter than 2×takeoffDist: no flat cruise segment
+                waypoints = [wp_s; wp_tc; wp_e];
+                times     = [startTimes(k), startTimes(k) + t_ramp, endTimes(k)];
+            else
+                waypoints = [wp_s; wp_tc; wp_td; wp_e];
+                times     = [startTimes(k), ...
+                             startTimes(k) + t_ramp, ...
+                             endTimes(k)   - t_ramp, ...
+                             endTimes(k)];
+            end
+            traj = waypointTrajectory(waypoints, TimeOfArrival=times);
+        else
+            p1   = [droneStart(k,1), droneStart(k,2), cruise_ned];
+            p2   = [droneGoal(k,1),  droneGoal(k,2),  cruise_ned];
+            traj = waypointTrajectory([p1; p2], TimeOfArrival=[startTimes(k) endTimes(k)]);
+        end
+
+        drones{k} = uavPlatform("UAV"+k, scene, Trajectory=traj);
+        updateMesh(drones{k},"quadrotor",{4},[.2 .2 .2],[0 0 0],[1 0 0 0]);
+    end
+else
+    % --- Analytic mode: no uavScenario/uavPlatform objects ---
+    % Positions are computed in closed form by step_read_positions from
+    % infra.droneStart/droneGoal/routeLen/startTimes (constant ground speed
+    % along the route + altitude_profile_ned ramps). The main loop uses a
+    % plain slot counter bounded by infra.stopTime.
+    scene  = [];
+    drones = cell(N, 1);
 end
 
 fprintf('[Arrival] model=%-14s  N=%d  routes=%d  seed=%d\n', ...
         arrivalMeta.model, N, numel(cfg.routes), cfg.rng_seed);
 
-setup(scene);
+if use_engine
+    setup(scene);
+end
 
 % --- Infrastructure output struct ---
 infra.microBSPos  = cfg.microBSPos;
@@ -114,6 +129,7 @@ infra.droneRoute  = droneRoute;
 infra.droneStart  = droneStart;
 infra.droneGoal   = droneGoal;
 infra.routeLen    = routeLen;    % per-drone route length [m], used by altitude profile
+infra.stopTime    = stopTime;    % [s] — analytic-mode loop bound (mirrors scene StopTime)
 
 plCfg = nrPathLossConfig;
 plCfg.Scenario = "UMa";

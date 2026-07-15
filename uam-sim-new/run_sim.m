@@ -25,7 +25,14 @@ if isfield(cfg, 'qbar_s_sw') && ismember(cfg.schedulingPolicy, SW_POLICIES)
     cfg.qbar_v = cfg.qbar_v_sw;
 end
 
-headless = isfield(cfg, 'headless') && cfg.headless;
+headless  = isfield(cfg, 'headless') && cfg.headless;
+useEngine = strcmp(cfg.positionEngine, 'uav-toolbox');
+
+if ~useEngine && ~headless
+    warning('UAM:run_sim', ...
+        'positionEngine=analytic has no uavScenario for the dashboard; forcing headless.');
+    headless = true;
+end
 
 if ~headless, clc; close all; end
 
@@ -56,10 +63,22 @@ if ~headless
 end
 
 % --- Main loop ---
+% Engine mode: uavScenario drives the clock (advance/CurrentTime), first
+% iteration lands on slot 1. Analytic mode replicates the same slot
+% sequence 1..maxSlot with a plain counter — no engine objects involved.
 txSlots = [];   % defined here so the post-loop dashboard refresh always has it
-while advance(scene)
-    time = scene.CurrentTime;              % seconds — uavScenario API only
-    slot = round(time * cfg.updateRate);   % integer slot index
+maxSlot = round(infra.stopTime * cfg.updateRate);
+slot    = 0;
+while true
+    if useEngine
+        if ~advance(scene), break; end
+        time = scene.CurrentTime;              % seconds — uavScenario API only
+        slot = round(time * cfg.updateRate);   % integer slot index
+    else
+        slot = slot + 1;
+        if slot > maxSlot, break; end
+        time = slot / cfg.updateRate;
+    end
 
     state = step_read_positions(state, drones, infra, time, slot, cfg);
 
