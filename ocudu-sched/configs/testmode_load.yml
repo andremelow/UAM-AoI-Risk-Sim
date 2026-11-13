@@ -1,0 +1,10 @@
+# Overlay (-c after the main config): N MAC-emulated full-buffer UEs sharing the cell with real UEs.
+# Test-mode UEs occupy RNTIs [rnti, rnti+nof_ues); real UEs get RNTIs outside that range.
+test_mode:
+  test_ue:
+    rnti: 0x44
+    nof_ues: 7
+    cqi: 15
+    ri: 1
+    pdsch_active: true
+    pusch_active: true

@@ -1,0 +1,4 @@
+# Overlay: one PUSCH grant per UL slot (K=1, the simulator's "dronesPerSlot"), so UEs contend for grants.
+cell_cfg:
+  pusch:
+    max_puschs_per_slot: 1

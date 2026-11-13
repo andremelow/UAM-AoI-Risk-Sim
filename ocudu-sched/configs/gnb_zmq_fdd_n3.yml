@@ -1,0 +1,47 @@
+# gNB over ZeroMQ for srsUE (FDD n3, 20 MHz, 15 kHz SCS — srsUE only supports 15 kHz). Addresses match compose.zmq.yml.
+cu_cp:
+  amf:
+    addrs: 10.53.1.2
+    port: 38412
+    bind_addrs: 10.53.1.3
+    supported_tracking_areas:
+      - tac: 7
+        plmn_list:
+          - plmn: "00101"
+            tai_slice_support_list:
+              - sst: 1
+
+ru_sdr:
+  device_driver: zmq
+  device_args: tx_port=tcp://10.53.1.3:2000,rx_port=tcp://10.53.1.4:2001,base_srate=23.04e6
+  srate: 23.04
+  tx_gain: 0
+  rx_gain: 0
+
+cell_cfg:
+  dl_arfcn: 368500
+  band: 3
+  channel_bandwidth_MHz: 20
+  common_scs: 15
+  plmn: "00101"
+  tac: 7
+  pdcch:
+    dedicated:
+      ss2_type: common
+      dci_format_0_1_and_1_1: false
+    common:
+      ss0_index: 0
+      coreset0_index: 12
+  prach:
+    prach_config_index: 1
+  pdsch:
+    mcs_table: qam64
+  pusch:
+    mcs_table: qam64
+
+metrics:
+  autostart_stdout_metrics: true
+
+log:
+  filename: /work/logs/zmq/gnb.log
+  all_level: warning

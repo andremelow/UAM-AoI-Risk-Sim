@@ -1,0 +1,41 @@
+# gNB on B200 serial 328A2C5 (n78, 20 MHz, 30 kHz SCS) + Open5GS (docker compose 5gc, 10.53.1.2).
+# NOT YET RUN OVER THE AIR: tx_gain/rx_gain must be set for the actual RF path (cabled+attenuators vs antennas).
+cu_cp:
+  amf:
+    addrs: 10.53.1.2
+    port: 38412
+    bind_addrs: 10.53.1.1
+    supported_tracking_areas:
+      - tac: 7
+        plmn_list:
+          - plmn: "00101"
+            tai_slice_support_list:
+              - sst: 1
+
+ru_sdr:
+  device_driver: uhd
+  device_args: type=b200,serial=328A2C5,num_recv_frames=64,num_send_frames=64
+  srate: 23.04
+  otw_format: sc12
+  tx_gain: 40
+  rx_gain: 40
+
+cell_cfg:
+  dl_arfcn: 632628
+  band: 78
+  channel_bandwidth_MHz: 20
+  common_scs: 30
+  plmn: "00101"
+  tac: 7
+  pci: 1
+
+expert_phy:
+  pusch_channel_estimator_td_strategy: average
+  pusch_channel_estimator_cfo_compensation: true
+
+metrics:
+  autostart_stdout_metrics: true
+
+log:
+  filename: /work/logs/b200/gnb.log
+  all_level: warning

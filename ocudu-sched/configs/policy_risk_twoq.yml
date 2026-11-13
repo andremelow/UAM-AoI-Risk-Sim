@@ -1,0 +1,12 @@
+# Overlay: risk-aware Max-Weight UL policy with two sources per UE (C2 on LCG1, video on LCG2).
+# Alpha file lines: "rnti_hex alpha_c2 [alpha_video]". A missing file keeps the defaults below.
+cell_cfg:
+  scheduler:
+    policy:
+      risk_sched:
+        ues_per_slot: 1
+        success_prob: 0.9
+        default_alpha: 1.0
+        default_alpha_video: 1.0
+        alpha_file: /work/logs/twoq/alpha.txt
+        alpha_reload_period_ms: 1000

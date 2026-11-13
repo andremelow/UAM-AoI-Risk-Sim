@@ -1,0 +1,8 @@
+cell_cfg:
+  scheduler:
+    policy:
+      risk_sched:
+        ues_per_slot: 1
+        success_prob: 0.9
+        alpha_file: /work/logs/flight/risk/alpha.txt
+        alpha_reload_period_ms: 500

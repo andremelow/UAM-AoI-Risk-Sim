@@ -1,0 +1,49 @@
+# No-RF end-to-end stack: Open5GS + OCUDU gNB (our build, from the ocudu-build volume) + srsUE, IQ over ZeroMQ.
+# Up:   docker compose -f compose.zmq.yml up -d        Down: docker compose -f compose.zmq.yml down
+# Extra gNB config overlays (e.g. emulated UEs): GNB_EXTRA="-c /work/configs/testmode_load.yml"
+name: ocudu-zmq
+services:
+  5gc:
+    image: docker-5gc
+    container_name: zmq-5gc
+    env_file: ocudu/docker/open5gs/open5gs.env
+    privileged: true
+    command: 5gc -c open5gs-5gc.yml
+    # srsUE cannot decode a Registration Accept whose TAI list has more than one TAC.
+    volumes: ["./configs/open5gs-5gc.single-tac.yml:/open5gs/open5gs-5gc.yml.in:ro"]
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.20 7777"]
+      interval: 3s
+      timeout: 1s
+      retries: 60
+    networks:
+      ran: {ipv4_address: 10.53.1.2}
+  gnb:
+    image: ocudu-dev:24.04
+    container_name: zmq-gnb
+    privileged: true
+    stdin_open: true
+    tty: true
+    volumes: [".:/work", "ocudu-build:/build"]
+    command: bash -c "/build/apps/gnb/gnb -c /work/configs/gnb_zmq_fdd_n3.yml ${GNB_EXTRA:-}"
+    depends_on:
+      5gc: {condition: service_healthy}
+    networks:
+      ran: {ipv4_address: 10.53.1.3}
+  ue:
+    image: ocudu-srsue:24.04
+    container_name: zmq-ue
+    privileged: true
+    stdin_open: true
+    tty: true
+    volumes: [".:/work"]
+    command: srsue /work/configs/ue_zmq.conf
+    depends_on: [gnb]
+    networks:
+      ran: {ipv4_address: 10.53.1.4}
+volumes:
+  ocudu-build: {external: true}
+networks:
+  ran:
+    ipam:
+      config: [{subnet: 10.53.1.0/24}]

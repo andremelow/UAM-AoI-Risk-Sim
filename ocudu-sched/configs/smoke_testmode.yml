@@ -1,0 +1,34 @@
+# Smoke test: no radio, no core. N MAC-emulated UEs (test mode) with full-buffer DL+UL over a dummy RU.
+cu_cp:
+  amf:
+    no_core: true
+cu_up:
+  ngu:
+    no_core: true
+
+ru_dummy:
+
+cell_cfg:
+  dl_arfcn: 632628
+  band: 78
+  channel_bandwidth_MHz: 20
+  common_scs: 30
+  plmn: "00101"
+  tac: 7
+  pci: 1
+
+test_mode:
+  test_ue:
+    rnti: 0x44
+    nof_ues: 8
+    cqi: 15
+    ri: 1
+    pdsch_active: true
+    pusch_active: true
+
+metrics:
+  autostart_stdout_metrics: true
+
+log:
+  filename: /work/logs/smoke/gnb.log
+  all_level: warning

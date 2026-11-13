@@ -1,0 +1,10 @@
+# Overlay: N MAC-emulated UEs with full-buffer UPLINK only (DL left free; srsUE fails Msg4 when emulated UEs load the DL).
+# Test-mode UEs occupy RNTIs [rnti, rnti+nof_ues); real UEs get RNTIs outside that range.
+test_mode:
+  test_ue:
+    rnti: 0x44
+    nof_ues: 7
+    cqi: 15
+    ri: 1
+    pdsch_active: false
+    pusch_active: true

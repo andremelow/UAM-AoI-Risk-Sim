@@ -1,0 +1,7 @@
+# External OCUDU clone: rebuilt from patches/ocudu-sched-all.patch.
+ocudu/
+# Run outputs; only the flight data and figure are versioned.
+logs/*
+!logs/flight/
+logs/flight/*/stdout.log
+logs/flight/*/gnb.log

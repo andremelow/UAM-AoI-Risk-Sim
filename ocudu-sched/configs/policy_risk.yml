@@ -1,0 +1,10 @@
+# Overlay: select the risk-aware Max-Weight UL policy (scheduler_time_risk). Alphas: "rnti_hex alpha" per line.
+cell_cfg:
+  scheduler:
+    policy:
+      risk_sched:
+        ues_per_slot: 1
+        success_prob: 0.9
+        default_alpha: 1.0
+        alpha_file: /work/logs/risk/alpha.txt
+        alpha_reload_period_ms: 1000

@@ -1,0 +1,1095 @@
+diff --git a/apps/units/flexible_o_du/o_du_high/du_high/du_high_config.h b/apps/units/flexible_o_du/o_du_high/du_high/du_high_config.h
+index 649f5c0..4334967 100644
+--- a/apps/units/flexible_o_du/o_du_high/du_high/du_high_config.h
++++ b/apps/units/flexible_o_du/o_du_high/du_high/du_high_config.h
+@@ -1513,6 +1513,22 @@ struct du_high_unit_test_mode_ue_config {
+   bool pdsch_active = true;
+   /// Whether PUSCH grants are automatically assigned to the test UE.
+   bool pusch_active = true;
++  /// Whether a periodic C2 source and a GOP video source replace the full UL buffer of the test UE.
++  bool c2_video_traffic = false;
++  /// Period of the C2 samples in milliseconds.
++  unsigned c2_period_ms = 250;
++  /// Size of a C2 sample in bytes.
++  unsigned c2_bytes = 100;
++  /// Video frame rate in frames per second.
++  unsigned video_fps = 30;
++  /// Number of frames of a video GOP.
++  unsigned video_gop = 15;
++  /// Size of a video I-frame in bytes.
++  unsigned video_i_bytes = 30000;
++  /// Size of a video P-frame in bytes.
++  unsigned video_p_bytes = 3000;
++  /// File that receives the delivered and the replaced updates of the traffic sources.
++  std::string traffic_log;
+   /// Channel Quality Indicator to use for the test UE.
+   unsigned cqi = 15;
+   /// Rank Indicator to use for the test UE. This value has to be lower than the number of ports.
+diff --git a/apps/units/flexible_o_du/o_du_high/du_high/du_high_config_cli11_schema.cpp b/apps/units/flexible_o_du/o_du_high/du_high/du_high_config_cli11_schema.cpp
+index 5db9d67..7216b09 100644
+--- a/apps/units/flexible_o_du/o_du_high/du_high/du_high_config_cli11_schema.cpp
++++ b/apps/units/flexible_o_du/o_du_high/du_high/du_high_config_cli11_schema.cpp
+@@ -887,6 +887,52 @@ static void configure_cli11_scheduler_policy_args(CLI::App& app, std::optional<s
+       policy_cfg = time_rr_scheduler_config{};
+     }
+   });
++
++  static time_risk_scheduler_config risk_cfg;
++  CLI::App*                         risk_sched_cfg_subcmd =
++      add_subcommand(app, "risk_sched", "Time-domain risk-aware Max-Weight policy configuration")->configurable();
++  add_option(*risk_sched_cfg_subcmd,
++             "--ues_per_slot",
++             risk_cfg.ues_per_slot,
++             "Number of UEs served per slot assumed by the lower-bound service rate")
++      ->capture_default_str()
++      ->check(CLI::Range(1, 64));
++  add_option(*risk_sched_cfg_subcmd, "--success_prob", risk_cfg.success_prob, "Nominal transmission success probability")
++      ->capture_default_str()
++      ->check(CLI::Range(0.01, 1.0));
++  add_option(*risk_sched_cfg_subcmd,
++             "--default_alpha",
++             risk_cfg.default_alpha,
++             "Risk coefficient of the UEs that are absent from the risk coefficient file")
++      ->capture_default_str();
++  add_option(*risk_sched_cfg_subcmd,
++             "--default_alpha_video",
++             risk_cfg.default_alpha_video,
++             "Video risk coefficient of the UEs without a video coefficient in the risk coefficient file")
++      ->capture_default_str();
++  add_option(*risk_sched_cfg_subcmd,
++             "--min_tbs_bytes",
++             risk_cfg.min_tbs_bytes,
++             "Minimum estimated UL transport block size, in bytes, that passes the channel gate")
++      ->capture_default_str();
++  add_option(*risk_sched_cfg_subcmd,
++             "--alpha_file",
++             risk_cfg.alpha_file,
++             "File that holds one \"C-RNTI (hexadecimal) risk coefficient\" pair per line")
++      ->capture_default_str();
++  add_option_function<unsigned>(
++      *risk_sched_cfg_subcmd,
++      "--alpha_reload_period_ms",
++      [](unsigned value) { risk_cfg.alpha_reload_period = std::chrono::milliseconds{value}; },
++      "Period, in milliseconds, between consecutive reloads of the risk coefficient file")
++      ->default_str("1000")
++      ->check(CLI::Range(10, 60000));
++  risk_sched_cfg_subcmd->parse_complete_callback([&]() {
++    CLI::App* risk_sched_sub_cmd = app.get_subcommand("risk_sched");
++    if (risk_sched_sub_cmd->count() != 0) {
++      policy_cfg = risk_cfg;
++    }
++  });
+ }
+ 
+ static void configure_cli11_ta_control_args(CLI::App& app, du_high_unit_ta_sched_control_config& ta_params)
+@@ -2902,6 +2948,34 @@ static void configure_cli11_test_ue_mode_args(CLI::App& app, du_high_unit_test_m
+       ->range(100, 60000);
+   add_option(app, "--pdsch_active", test_params.pdsch_active, "PDSCH enabled")->capture_default_str();
+   add_option(app, "--pusch_active", test_params.pusch_active, "PUSCH enabled")->capture_default_str();
++  add_option(app,
++             "--c2_video_traffic",
++             test_params.c2_video_traffic,
++             "Replace the full UL buffer by a periodic C2 source and a GOP video source")
++      ->capture_default_str();
++  add_option(app, "--c2_period_ms", test_params.c2_period_ms, "Period of the C2 samples in milliseconds")
++      ->capture_default_str()
++      ->range(1, 60000);
++  add_option(app, "--c2_bytes", test_params.c2_bytes, "Size of a C2 sample in bytes")
++      ->capture_default_str()
++      ->range(1, 100000);
++  add_option(app, "--video_fps", test_params.video_fps, "Video frame rate in frames per second")
++      ->capture_default_str()
++      ->range(1, 240);
++  add_option(app, "--video_gop", test_params.video_gop, "Number of frames of a video GOP")
++      ->capture_default_str()
++      ->range(1, 1000);
++  add_option(app, "--video_i_bytes", test_params.video_i_bytes, "Size of a video I-frame in bytes")
++      ->capture_default_str()
++      ->range(1, 10000000);
++  add_option(app, "--video_p_bytes", test_params.video_p_bytes, "Size of a video P-frame in bytes")
++      ->capture_default_str()
++      ->range(1, 10000000);
++  add_option(app,
++             "--traffic_log",
++             test_params.traffic_log,
++             "File that receives the delivered and the replaced updates of the traffic sources")
++      ->capture_default_str();
+   add_option(app, "--cqi", test_params.cqi, "Channel Quality Information (CQI) to be forwarded to test UE.")
+       ->capture_default_str()
+       ->range(1, 15);
+diff --git a/apps/units/flexible_o_du/o_du_high/du_high/du_high_config_translators.cpp b/apps/units/flexible_o_du/o_du_high/du_high/du_high_config_translators.cpp
+index ce67043..5681ed0 100644
+--- a/apps/units/flexible_o_du/o_du_high/du_high/du_high_config_translators.cpp
++++ b/apps/units/flexible_o_du/o_du_high/du_high/du_high_config_translators.cpp
+@@ -1602,7 +1602,17 @@ static odu::du_test_mode_config generate_test_mode_config(const du_high_unit_con
+                                                     test_ue.i_1_3,
+                                                     test_ue.i_2,
+                                                     attach_detach_duration,
+-                                                    std::chrono::milliseconds{test_ue.attach_detach_guard_duration_ms}};
++                                                    std::chrono::milliseconds{test_ue.attach_detach_guard_duration_ms},
++                                                    {}};
++  odu::du_test_mode_config::traffic_source_config& traffic = test_cfg.test_ue->traffic;
++  traffic.enabled                                          = test_ue.c2_video_traffic;
++  traffic.c2_period                                        = std::chrono::milliseconds{test_ue.c2_period_ms};
++  traffic.c2_bytes                                         = test_ue.c2_bytes;
++  traffic.video_fps                                        = test_ue.video_fps;
++  traffic.video_gop                                        = test_ue.video_gop;
++  traffic.video_i_bytes                                    = test_ue.video_i_bytes;
++  traffic.video_p_bytes                                    = test_ue.video_p_bytes;
++  traffic.log_file                                         = test_ue.traffic_log;
+ 
+   return test_cfg;
+ }
+diff --git a/include/ocudu/du/du_high/du_test_mode_config.h b/include/ocudu/du/du_high/du_test_mode_config.h
+index 357f41a..fd82e46 100644
+--- a/include/ocudu/du/du_high/du_test_mode_config.h
++++ b/include/ocudu/du/du_high/du_test_mode_config.h
+@@ -8,12 +8,36 @@
+ #include "ocudu/ran/rnti.h"
+ #include <chrono>
+ #include <optional>
++#include <string>
+ 
+ namespace ocudu {
+ namespace odu {
+ 
+ /// Configuration that enable DU test mode operation.
+ struct du_test_mode_config {
++  /// \brief Two-source UL traffic model of a test UE.
++  ///
++  /// A periodic C2 sample and a GOP-structured video stream replace the full UL buffer. The C2 source reports its
++  /// buffer on the GBR DRB logical channel group and the video source on the non-GBR one.
++  struct traffic_source_config {
++    /// Whether the two-source model replaces the full UL buffer.
++    bool enabled = false;
++    /// Period of the C2 samples.
++    std::chrono::milliseconds c2_period{250};
++    /// Size of a C2 sample in bytes.
++    unsigned c2_bytes = 100;
++    /// Video frame rate in frames per second.
++    unsigned video_fps = 30;
++    /// Number of frames of a GOP. The first frame of a GOP is an I-frame.
++    unsigned video_gop = 15;
++    /// Size of a video I-frame in bytes.
++    unsigned video_i_bytes = 30000;
++    /// Size of a video P-frame in bytes.
++    unsigned video_p_bytes = 3000;
++    /// File that receives one line for each delivered or replaced update. An empty name disables the log.
++    std::string log_file;
++  };
++
+   struct test_mode_ue_config {
+     rnti_t   rnti    = to_rnti(0x4444);
+     uint16_t nof_ues = 1;
+@@ -34,6 +58,8 @@ struct du_test_mode_config {
+     std::optional<std::chrono::milliseconds> attach_detach_duration;
+     /// \brief Guard period duration between a release cycle and the next creation cycle.
+     std::chrono::milliseconds attach_detach_guard_duration{1000};
++    /// Two-source UL traffic model of the test UEs.
++    traffic_source_config traffic;
+   };
+ 
+   /// Creation of a phantom UE for test mode operation.
+diff --git a/include/ocudu/scheduler/config/scheduler_expert_config.h b/include/ocudu/scheduler/config/scheduler_expert_config.h
+index db5b6a1..35768e6 100644
+--- a/include/ocudu/scheduler/config/scheduler_expert_config.h
++++ b/include/ocudu/scheduler/config/scheduler_expert_config.h
+@@ -18,6 +18,7 @@
+ #include "ocudu/ran/slot_pdu_capacity_constants.h"
+ #include "ocudu/ran/srs/srs_configuration.h"
+ #include <chrono>
++#include <string>
+ #include <variant>
+ #include <vector>
+ 
+@@ -55,8 +56,27 @@ struct time_qos_scheduler_config {
+ /// \brief Round-Robin policy scheduler expert parameters.
+ struct time_rr_scheduler_config {};
+ 
++/// Risk-aware Max-Weight policy scheduler parameters.
++struct time_risk_scheduler_config {
++  /// Number of UEs served per slot assumed by the lower-bound service rate.
++  unsigned ues_per_slot = 1;
++  /// Nominal transmission success probability.
++  double success_prob = 0.9;
++  /// C2 risk coefficient of the UEs that are absent from the risk coefficient file.
++  double default_alpha = 1.0;
++  /// Video risk coefficient of the UEs whose line of the risk coefficient file holds no video coefficient.
++  double default_alpha_video = 1.0;
++  /// Minimum estimated UL transport block size, in bytes, that passes the channel gate.
++  unsigned min_tbs_bytes = 1;
++  /// File that holds one "C-RNTI (hexadecimal), C2 risk coefficient, optional video risk coefficient" entry per line.
++  std::string alpha_file = "/tmp/ocudu_risk_alpha.txt";
++  /// Period between consecutive reloads of the risk coefficient file.
++  std::chrono::milliseconds alpha_reload_period{1000};
++};
++
+ /// \brief Scheduler policy parameters.
+-using scheduler_policy_config = std::variant<time_qos_scheduler_config, time_rr_scheduler_config>;
++using scheduler_policy_config =
++    std::variant<time_qos_scheduler_config, time_rr_scheduler_config, time_risk_scheduler_config>;
+ 
+ struct ul_power_control {
+   /// Enable closed-loop PUSCH power control.
+diff --git a/lib/du/du_high/test_mode/CMakeLists.txt b/lib/du/du_high/test_mode/CMakeLists.txt
+index 561a9dd..30cbe1f 100644
+--- a/lib/du/du_high/test_mode/CMakeLists.txt
++++ b/lib/du/du_high/test_mode/CMakeLists.txt
+@@ -7,5 +7,6 @@ add_library(ocudu_du_high_adapters
+         du_test_mode_controller.cpp
+         f1c_du_test_mode_adapter.cpp
+         mac_test_mode_adapter.cpp
+-        mac_test_mode_helpers.cpp)
++        mac_test_mode_helpers.cpp
++        test_mode_traffic_source.cpp)
+ target_link_libraries(ocudu_du_high_adapters ocudulog ocudu_support ocudu_du_manager ocudu_mac ocudu_f1ap_du)
+diff --git a/lib/du/du_high/test_mode/mac_test_mode_adapter.cpp b/lib/du/du_high/test_mode/mac_test_mode_adapter.cpp
+index 766e51c..746aacf 100644
+--- a/lib/du/du_high/test_mode/mac_test_mode_adapter.cpp
++++ b/lib/du/du_high/test_mode/mac_test_mode_adapter.cpp
+@@ -10,6 +10,7 @@
+ #include "ocudu/mac/mac_cell_timing_context.h"
+ #include "ocudu/mac/mac_factory.h"
+ #include "ocudu/ran/harq_id.h"
++#include "ocudu/scheduler/config/logical_channel_config_factory.h"
+ #include <functional>
+ #include <utility>
+ 
+@@ -64,10 +65,15 @@ public:
+   mac_wrapper(mac_test_mode_adapter& parent_) : parent(parent_) {}
+ 
+   // -- mac_cell_rach_handler interface --
+-  mac_cell_rach_handler& get_rach_handler(du_cell_index_t cell_index) override { return *this; }
++  // Test mode UEs are created by the test mode controller. RACH indications bypass the adapter so that real UEs can
++  // attach and share the cell with the test mode UEs.
++  mac_cell_rach_handler& get_rach_handler(du_cell_index_t cell_index) override
++  {
++    return parent.mac_adapted->get_rach_handler(cell_index);
++  }
+   void                   handle_rach_indication(const mac_rach_indication& rach_ind) override
+   {
+-    // Ignores all RACH indications coming from the PHY. All UEs will be created by the test mode controller.
++    // Not reached: RACH indications bypass the adapter, see get_rach_handler().
+   }
+   std::optional<rnti_t>
+   handle_msga_ccch_sdu(rnti_t ra_rnti, uint8_t rapid, slot_point sl_rx, const ue_con_res_id_t& con_res_id) override
+@@ -183,6 +189,11 @@ mac_test_mode_cell_adapter::mac_test_mode_cell_adapter(const du_test_mode_config
+   history(cell_cfg),
+   event_handler(event_handler_)
+ {
++  if (test_ue_cfg.pusch_active and test_ue_cfg.traffic.enabled) {
++    traffic_source =
++        std::make_unique<test_mode_traffic_source>(test_ue_cfg.traffic, test_rnti_start, test_ue_cfg.nof_ues);
++    updated_ues.reserve(test_ue_cfg.nof_ues);
++  }
+ }
+ 
+ void mac_test_mode_cell_adapter::handle_slot_indication(const mac_cell_timing_context& context)
+@@ -236,6 +247,16 @@ void mac_test_mode_cell_adapter::handle_slot_indication(const mac_cell_timing_co
+     }
+   }
+ 
++  if (traffic_source != nullptr) {
++    // Generate the updates of this slot and report the buffers of the UEs that generated one. The direct BSR stands
++    // for the SR and the BSR that a UE sends when data arrives.
++    updated_ues.clear();
++    traffic_source->run_slot(std::chrono::microseconds{1000 / context.sl_tx.nof_slots_per_subframe()}, updated_ues);
++    for (rnti_t rnti : updated_ues) {
++      push_test_bsr(context.sl_tx.without_hyper_sfn(), rnti, to_harq_id(0));
++    }
++  }
++
+   slot_handler.handle_slot_indication(context);
+ }
+ 
+@@ -329,21 +350,47 @@ void mac_test_mode_cell_adapter::forward_crc_ind_to_mac(const mac_crc_indication
+     return;
+   }
+ 
++  // The traffic model needs the transport block size of each decoded PUSCH.
++  mac_test_mode_cell_decision_history::reader entry;
++  if (traffic_source != nullptr) {
++    entry = history.read(crc_msg.sl_rx);
++  }
++
+   for (const mac_crc_pdu& pdu : crc_msg.crcs) {
+     if (not is_test_ue(pdu.rnti)) {
+       continue;
+     }
+ 
+-    auto rx_pdu = create_test_pdu_with_bsr(cell_index, crc_msg.sl_rx, pdu.rnti, to_harq_id(pdu.harq_id));
+-    if (not rx_pdu.has_value()) {
+-      logger.warning("TEST_MODE c-rnti={}: Unable to create test PDU with BSR", pdu.rnti);
+-      continue;
++    if (traffic_source != nullptr and entry != nullptr and pdu.tb_crc_success) {
++      for (const ul_sched_info& pusch : entry->puschs) {
++        if (pusch.pusch_cfg.rnti == pdu.rnti and pusch.pusch_cfg.harq_id == pdu.harq_id) {
++          traffic_source->serve(pdu.rnti, pusch.pusch_cfg.tb_size_bytes.value());
++          break;
++        }
++      }
+     }
+-    // In case of test mode UE, auto-forward a positive BSR.
+-    pdu_handler.handle_rx_data_indication(std::move(rx_pdu.value()));
++
++    // In case of test mode UE, auto-forward a BSR.
++    push_test_bsr(crc_msg.sl_rx, pdu.rnti, to_harq_id(pdu.harq_id));
+   }
+ }
+ 
++void mac_test_mode_cell_adapter::push_test_bsr(slot_point sl_rx, rnti_t rnti, harq_id_t harq_id)
++{
++  expected<mac_rx_data_indication> rx_pdu = make_unexpected(default_error_t{});
++  if (traffic_source != nullptr) {
++    const test_mode_traffic_source::buffer_state bs = traffic_source->get_buffer_state(rnti);
++    rx_pdu = create_test_pdu_with_bsr(cell_index, sl_rx, rnti, harq_id, bs.c2_bytes, bs.video_bytes);
++  } else {
++    rx_pdu = create_test_pdu_with_bsr(cell_index, sl_rx, rnti, harq_id);
++  }
++  if (not rx_pdu.has_value()) {
++    logger.warning("TEST_MODE c-rnti={}: Unable to create test PDU with BSR", rnti);
++    return;
++  }
++  pdu_handler.handle_rx_data_indication(std::move(rx_pdu.value()));
++}
++
+ void mac_test_mode_cell_adapter::handle_uci(const mac_uci_indication_message& msg)
+ {
+   mac_uci_indication_message msg_copy{msg};
+@@ -443,13 +490,11 @@ void mac_test_mode_cell_adapter::handle_msg4(const dl_msg_alloc& grant, slot_poi
+   }
+ 
+   if (test_ue_cfg.pusch_active) {
+-    auto rx_pdu = create_test_pdu_with_bsr(cell_index, sl_tx, crnti, to_harq_id(0));
+-    if (not rx_pdu.has_value()) {
+-      logger.warning("TEST_MODE c-rnti={}: Unable to create test PDU with BSR", crnti);
+-    } else {
+-      // In case of PUSCH test mode is enabled, push a BSR to trigger the first PUSCH.
+-      pdu_handler.handle_rx_data_indication(std::move(rx_pdu.value()));
++    if (traffic_source != nullptr) {
++      traffic_source->start_ue(crnti);
+     }
++    // In case of PUSCH test mode is enabled, push a BSR to trigger the first PUSCH.
++    push_test_bsr(sl_tx, crnti, to_harq_id(0));
+   }
+ 
+   // Notify test mode controller about the UE establishment.
+@@ -661,6 +706,16 @@ async_task<mac_ue_create_response> mac_test_mode_adapter::handle_ue_create_reque
+     // Add adapters to the UE config bearers before passing it to MAC.
+     cfg_copy.bearers = adapt_bearers(cfg.bearers);
+ 
++    if (test_ue.pusch_active and test_ue.traffic.enabled and cfg_copy.sched_cfg.lc_config_list.has_value()) {
++      // The scheduler tracks the C2 and the video buffers on two data logical channels. The test UE only reports
++      // BSRs for them, so the MAC needs no bearer.
++      logical_channel_config c2_lc = config_helpers::create_default_logical_channel_config(LCID_MIN_DRB);
++      c2_lc.lc_group               = GBR_DRB_LCG_ID;
++      cfg_copy.sched_cfg.lc_config_list->push_back(c2_lc);
++      cfg_copy.sched_cfg.lc_config_list->push_back(
++          config_helpers::create_default_logical_channel_config(uint_to_lcid(LCID_MIN_DRB + 1)));
++    }
++
+     // Forward test UE creation request to MAC.
+     return mac_adapted->get_ue_configurator().handle_ue_create_request(cfg_copy);
+   }
+diff --git a/lib/du/du_high/test_mode/mac_test_mode_adapter.h b/lib/du/du_high/test_mode/mac_test_mode_adapter.h
+index a3bce66..2313482 100644
+--- a/lib/du/du_high/test_mode/mac_test_mode_adapter.h
++++ b/lib/du/du_high/test_mode/mac_test_mode_adapter.h
+@@ -7,6 +7,7 @@
+ 
+ #include "mac_test_mode_decision_history.h"
+ #include "mac_test_mode_event_handler.h"
++#include "test_mode_traffic_source.h"
+ #include "ocudu/du/du_high/du_test_mode_config.h"
+ #include "ocudu/mac/mac.h"
+ #include "ocudu/mac/mac_cell_manager.h"
+@@ -105,6 +106,9 @@ private:
+   /// Reacts to the Msg4 of a test UE.
+   void handle_msg4(const dl_msg_alloc& grant, slot_point sl_tx);
+ 
++  /// Pushes a BSR of a test UE to the MAC. The BSR reports a full buffer when the traffic model is disabled.
++  void push_test_bsr(slot_point sl_rx, rnti_t rnti, harq_id_t harq_id);
++
+   const du_cell_index_t                           cell_index;
+   const du_test_mode_config::test_mode_ue_config& test_ue_cfg;
+   mac_cell_control_information_handler&           adapted;
+@@ -124,6 +128,12 @@ private:
+ 
+   mac_test_mode_event_handler& event_handler;
+ 
++  /// Two-source UL traffic model of the test UEs. Null when the test UEs have a full UL buffer.
++  std::unique_ptr<test_mode_traffic_source> traffic_source;
++
++  /// Test UEs that generated an update in the current slot.
++  std::vector<rnti_t> updated_ues;
++
+   slot_point last_slot_ind;
+ };
+ 
+diff --git a/lib/du/du_high/test_mode/mac_test_mode_helpers.cpp b/lib/du/du_high/test_mode/mac_test_mode_helpers.cpp
+index 313df5a..a4251ae 100644
+--- a/lib/du/du_high/test_mode/mac_test_mode_helpers.cpp
++++ b/lib/du/du_high/test_mode/mac_test_mode_helpers.cpp
+@@ -4,6 +4,7 @@
+ // Portions of this file may implement 3GPP specifications, which may be subject to additional licensing requirements.
+ 
+ #include "mac_test_mode_helpers.h"
++#include "../../../mac/mac_ul/ul_bsr.h"
+ #include "ocudu/ran/csi_report/csi_report_on_pucch_helpers.h"
+ #include "ocudu/ran/csi_report/csi_report_packed.h"
+ #include "ocudu/ran/csi_report/csi_report_size.h"
+@@ -36,6 +37,51 @@ odu::create_test_pdu_with_bsr(du_cell_index_t cell_index, slot_point sl_rx, rnti
+       sl_rx, cell_index, mac_rx_pdu_list{mac_rx_pdu{test_rnti, harq_id, std::move(buf.value())}}};
+ }
+ 
++/// Returns the lowest 8-bit Buffer Size index whose level holds the given number of bytes.
++static uint8_t bytes_to_long_bsr_index(unsigned nof_bytes)
++{
++  static constexpr unsigned max_index = 254;
++  if (nof_bytes == 0) {
++    return 0;
++  }
++  unsigned lo = 1;
++  unsigned hi = max_index;
++  while (lo < hi) {
++    const unsigned mid = (lo + hi) / 2;
++    if (buff_size_field_to_bytes(mid, bsr_format::LONG_BSR) >= nof_bytes) {
++      hi = mid;
++    } else {
++      lo = mid + 1;
++    }
++  }
++  return lo;
++}
++
++expected<mac_rx_data_indication> odu::create_test_pdu_with_bsr(du_cell_index_t cell_index,
++                                                               slot_point      sl_rx,
++                                                               rnti_t          test_rnti,
++                                                               harq_id_t       harq_id,
++                                                               unsigned        c2_bytes,
++                                                               unsigned        video_bytes)
++{
++  // - 8-bit R/LCID MAC subheader.
++  // - MAC CE with Long BSR for LCG1 (C2) and LCG2 (video).
++  //
++  // |   |   |   |   |   |   |   |   |
++  // | R | R |         LCID          |  Octet 1
++  // |              L                |  Octet 2
++  // | LCG7 | LCG6 |    ...   | LCG0 |  Octet 3
++  // |     Buffer Size of LCG1       |  Octet 4
++  // |     Buffer Size of LCG2       |  Octet 5
++  auto buf =
++      byte_buffer::create({0x3e, 0x03, 0x06, bytes_to_long_bsr_index(c2_bytes), bytes_to_long_bsr_index(video_bytes)});
++  if (not buf.has_value()) {
++    return make_unexpected(default_error_t{});
++  }
++  return mac_rx_data_indication{
++      sl_rx, cell_index, mac_rx_pdu_list{mac_rx_pdu{test_rnti, harq_id, std::move(buf.value())}}};
++}
++
+ expected<mac_rx_data_indication> odu::create_test_pdu_with_rrc_setup_complete(du_cell_index_t cell_index,
+                                                                               slot_point      sl_rx,
+                                                                               rnti_t          test_rnti,
+diff --git a/lib/du/du_high/test_mode/mac_test_mode_helpers.h b/lib/du/du_high/test_mode/mac_test_mode_helpers.h
+index 243bbeb..0214413 100644
+--- a/lib/du/du_high/test_mode/mac_test_mode_helpers.h
++++ b/lib/du/du_high/test_mode/mac_test_mode_helpers.h
+@@ -23,6 +23,16 @@ expected<mac_rx_data_indication>
+ create_test_pdu_with_bsr(du_cell_index_t cell_index, slot_point sl_rx, rnti_t test_rnti, harq_id_t harq_id);
+ 
+ /// Create dummy PDU with rrcSetupComplete.
++/// \brief Creates a test PDU with a Long BSR that reports the buffers of the C2 and of the video sources.
++///
++/// The BSR reports the C2 buffer on the GBR DRB logical channel group and the video buffer on the non-GBR one.
++expected<mac_rx_data_indication> create_test_pdu_with_bsr(du_cell_index_t cell_index,
++                                                          slot_point      sl_rx,
++                                                          rnti_t          test_rnti,
++                                                          harq_id_t       harq_id,
++                                                          unsigned        c2_bytes,
++                                                          unsigned        video_bytes);
++
+ expected<mac_rx_data_indication> create_test_pdu_with_rrc_setup_complete(du_cell_index_t cell_index,
+                                                                          slot_point      sl_rx,
+                                                                          rnti_t          test_rnti,
+diff --git a/lib/du/du_high/test_mode/test_mode_traffic_source.cpp b/lib/du/du_high/test_mode/test_mode_traffic_source.cpp
+new file mode 100644
+index 0000000..fa69633
+--- /dev/null
++++ b/lib/du/du_high/test_mode/test_mode_traffic_source.cpp
+@@ -0,0 +1,167 @@
++// SPDX-FileCopyrightText: Copyright (C) 2026 OCUDU contributors
++// SPDX-License-Identifier: BSD-3-Clause-Open-MPI
++
++#include "test_mode_traffic_source.h"
++#include <algorithm>
++
++using namespace ocudu;
++using namespace odu;
++
++/// Bytes of a grant that the MAC subheaders and the BSR MAC CE take.
++static constexpr unsigned MAC_OVERHEAD_BYTES = 8;
++
++/// Period between flushes of the update log.
++static constexpr uint64_t LOG_FLUSH_PERIOD_US = 1000000;
++
++test_mode_traffic_source::test_mode_traffic_source(const du_test_mode_config::traffic_source_config& cfg_,
++                                                   rnti_t                                            first_rnti_,
++                                                   unsigned                                          nof_ues_) :
++  cfg(cfg_),
++  first_rnti(first_rnti_),
++  c2_period_us(std::chrono::duration_cast<std::chrono::microseconds>(cfg_.c2_period).count()),
++  frame_period_us(1000000U / std::max(cfg_.video_fps, 1U)),
++  ues(nof_ues_)
++{
++  if (not cfg.log_file.empty()) {
++    log.open(cfg.log_file);
++    log << "t_us,rnti,source,event,seq,bytes,gen_us\n";
++  }
++}
++
++void test_mode_traffic_source::start_ue(rnti_t rnti)
++{
++  std::lock_guard<std::mutex> lock(mutex);
++  const unsigned              idx = static_cast<unsigned>(rnti) - static_cast<unsigned>(first_rnti);
++  if (idx >= ues.size() or ues[idx].active) {
++    return;
++  }
++  ue_source& u = ues[idx];
++  u            = {};
++  u.active     = true;
++  // The UEs spread their generation instants and their I-frames evenly over a period.
++  u.next_c2_us    = now_us + idx * c2_period_us / ues.size();
++  u.next_frame_us = now_us + idx * frame_period_us / ues.size();
++  u.frame_counter = idx * cfg.video_gop / ues.size();
++}
++
++void test_mode_traffic_source::run_slot(std::chrono::microseconds slot_duration, std::vector<rnti_t>& updated)
++{
++  std::lock_guard<std::mutex> lock(mutex);
++  now_us += slot_duration.count();
++
++  for (unsigned idx = 0, e = ues.size(); idx != e; ++idx) {
++    ue_source& u = ues[idx];
++    if (not u.active) {
++      continue;
++    }
++    const rnti_t rnti      = to_rnti(static_cast<unsigned>(first_rnti) + idx);
++    bool         generated = false;
++
++    while (now_us >= u.next_c2_us) {
++      if (u.c2_rem > 0) {
++        // The new sample replaces the sample that was not delivered.
++        log_event(rnti, "c2", "drop", u.c2_seq, u.c2_rem, u.c2_gen_us);
++      }
++      ++u.c2_seq;
++      u.c2_rem    = cfg.c2_bytes;
++      u.c2_gen_us = u.next_c2_us;
++      u.next_c2_us += c2_period_us;
++      generated = true;
++    }
++
++    while (now_us >= u.next_frame_us) {
++      video_frame frame;
++      frame.valid     = true;
++      frame.is_iframe = u.frame_counter % cfg.video_gop == 0;
++      frame.seq       = u.frame_counter;
++      frame.size      = frame.is_iframe ? cfg.video_i_bytes : cfg.video_p_bytes;
++      frame.rem       = frame.size;
++      frame.gen_us    = u.next_frame_us;
++      ++u.frame_counter;
++      u.next_frame_us += frame_period_us;
++
++      if (not u.in_service.valid) {
++        u.in_service = frame;
++      } else {
++        if (u.pending.valid) {
++          // The new frame replaces the pending frame. The frame in service continues.
++          log_event(rnti, u.pending.is_iframe ? "vI" : "vP", "drop", u.pending.seq, u.pending.rem, u.pending.gen_us);
++        }
++        u.pending = frame;
++      }
++      generated = true;
++    }
++
++    if (generated) {
++      updated.push_back(rnti);
++    }
++  }
++
++  if (log.is_open() and now_us >= next_flush_us) {
++    log.flush();
++    next_flush_us = now_us + LOG_FLUSH_PERIOD_US;
++  }
++}
++
++void test_mode_traffic_source::serve(rnti_t rnti, unsigned tbs_bytes)
++{
++  std::lock_guard<std::mutex> lock(mutex);
++  const unsigned              idx = static_cast<unsigned>(rnti) - static_cast<unsigned>(first_rnti);
++  if (idx >= ues.size() or not ues[idx].active) {
++    return;
++  }
++  ue_source& u     = ues[idx];
++  unsigned   bytes = tbs_bytes > MAC_OVERHEAD_BYTES ? tbs_bytes - MAC_OVERHEAD_BYTES : 0;
++
++  // The C2 logical channel has the highest priority.
++  if (u.c2_rem > 0 and bytes > 0) {
++    const unsigned taken = std::min(bytes, u.c2_rem);
++    u.c2_rem -= taken;
++    bytes -= taken;
++    if (u.c2_rem == 0) {
++      log_event(rnti, "c2", "rx", u.c2_seq, cfg.c2_bytes, u.c2_gen_us);
++    }
++  }
++
++  // The video frames take the remaining bytes in generation order.
++  while (bytes > 0 and u.in_service.valid) {
++    const unsigned taken = std::min(bytes, u.in_service.rem);
++    u.in_service.rem -= taken;
++    bytes -= taken;
++    if (u.in_service.rem == 0) {
++      log_event(rnti,
++                u.in_service.is_iframe ? "vI" : "vP",
++                "rx",
++                u.in_service.seq,
++                u.in_service.size,
++                u.in_service.gen_us);
++      u.in_service = u.pending;
++      u.pending    = {};
++    }
++  }
++}
++
++test_mode_traffic_source::buffer_state test_mode_traffic_source::get_buffer_state(rnti_t rnti)
++{
++  std::lock_guard<std::mutex> lock(mutex);
++  const unsigned              idx = static_cast<unsigned>(rnti) - static_cast<unsigned>(first_rnti);
++  if (idx >= ues.size() or not ues[idx].active) {
++    return {};
++  }
++  const ue_source& u = ues[idx];
++  return {u.c2_rem, (u.in_service.valid ? u.in_service.rem : 0) + (u.pending.valid ? u.pending.rem : 0)};
++}
++
++void test_mode_traffic_source::log_event(rnti_t      rnti,
++                                         const char* source,
++                                         const char* event,
++                                         unsigned    seq,
++                                         unsigned    bytes,
++                                         uint64_t    gen_us)
++{
++  if (not log.is_open()) {
++    return;
++  }
++  log << now_us << ',' << std::hex << static_cast<unsigned>(rnti) << std::dec << ',' << source << ',' << event << ','
++      << seq << ',' << bytes << ',' << gen_us << '\n';
++}
+diff --git a/lib/du/du_high/test_mode/test_mode_traffic_source.h b/lib/du/du_high/test_mode/test_mode_traffic_source.h
+new file mode 100644
+index 0000000..17a0155
+--- /dev/null
++++ b/lib/du/du_high/test_mode/test_mode_traffic_source.h
+@@ -0,0 +1,86 @@
++// SPDX-FileCopyrightText: Copyright (C) 2026 OCUDU contributors
++// SPDX-License-Identifier: BSD-3-Clause-Open-MPI
++
++#pragma once
++
++#include "ocudu/du/du_high/du_test_mode_config.h"
++#include "ocudu/ran/rnti.h"
++#include <chrono>
++#include <cstdint>
++#include <fstream>
++#include <mutex>
++#include <vector>
++
++namespace ocudu::odu {
++
++/// \brief Two-source UL traffic model of the test UEs of a cell.
++///
++/// Each UE holds a C2 source and a video source. The C2 source keeps its freshest sample only. The video source keeps
++/// the frame in service and the freshest pending frame, so a new frame replaces a pending one and never interrupts
++/// the frame in service. A served grant drains the C2 sample first and the video frames after it, as the logical
++/// channel prioritization of a UE does.
++class test_mode_traffic_source
++{
++public:
++  /// UL buffer occupancy of a UE, in bytes.
++  struct buffer_state {
++    unsigned c2_bytes    = 0;
++    unsigned video_bytes = 0;
++  };
++
++  test_mode_traffic_source(const du_test_mode_config::traffic_source_config& cfg_,
++                           rnti_t                                            first_rnti_,
++                           unsigned                                          nof_ues_);
++
++  /// Starts the sources of a UE.
++  void start_ue(rnti_t rnti);
++
++  /// \brief Advances the model by one slot and generates the updates that are due.
++  /// \param[in] slot_duration Duration of a slot.
++  /// \param[out] updated UEs that generated an update in this slot.
++  void run_slot(std::chrono::microseconds slot_duration, std::vector<rnti_t>& updated);
++
++  /// Drains the buffers of a UE with a correctly decoded grant of the given transport block size.
++  void serve(rnti_t rnti, unsigned tbs_bytes);
++
++  /// Returns the UL buffer occupancy of a UE.
++  buffer_state get_buffer_state(rnti_t rnti);
++
++private:
++  struct video_frame {
++    bool     valid    = false;
++    bool     is_iframe = false;
++    unsigned seq      = 0;
++    unsigned size     = 0;
++    unsigned rem      = 0;
++    uint64_t gen_us   = 0;
++  };
++
++  struct ue_source {
++    bool        active        = false;
++    uint64_t    next_c2_us    = 0;
++    uint64_t    next_frame_us = 0;
++    unsigned    frame_counter = 0;
++    unsigned    c2_seq        = 0;
++    unsigned    c2_rem        = 0;
++    uint64_t    c2_gen_us     = 0;
++    video_frame in_service;
++    video_frame pending;
++  };
++
++  /// Writes one line of the update log.
++  void log_event(rnti_t rnti, const char* source, const char* event, unsigned seq, unsigned bytes, uint64_t gen_us);
++
++  const du_test_mode_config::traffic_source_config cfg;
++  const rnti_t                                     first_rnti;
++  const uint64_t                                   c2_period_us;
++  const uint64_t                                   frame_period_us;
++
++  std::mutex             mutex;
++  uint64_t               now_us        = 0;
++  uint64_t               next_flush_us = 0;
++  std::vector<ue_source> ues;
++  std::ofstream          log;
++};
++
++} // namespace ocudu::odu
+diff --git a/lib/scheduler/CMakeLists.txt b/lib/scheduler/CMakeLists.txt
+index 548bd43..445eeb2 100644
+--- a/lib/scheduler/CMakeLists.txt
++++ b/lib/scheduler/CMakeLists.txt
+@@ -21,6 +21,7 @@ set(SOURCES
+         policy/scheduler_policy_factory.cpp
+         policy/scheduler_time_rr.cpp
+         policy/scheduler_time_qos.cpp
++        policy/scheduler_time_risk.cpp
+         pucch_scheduling/pucch_allocator_impl.cpp
+         pucch_scheduling/pucch_allocator_helpers.cpp
+         pucch_scheduling/pucch_collision_manager.cpp
+diff --git a/lib/scheduler/policy/scheduler_policy_factory.cpp b/lib/scheduler/policy/scheduler_policy_factory.cpp
+index 0a3f195..92be548 100644
+--- a/lib/scheduler/policy/scheduler_policy_factory.cpp
++++ b/lib/scheduler/policy/scheduler_policy_factory.cpp
+@@ -5,6 +5,7 @@
+ 
+ #include "scheduler_policy_factory.h"
+ #include "scheduler_time_qos.h"
++#include "scheduler_time_risk.h"
+ #include "scheduler_time_rr.h"
+ 
+ using namespace ocudu;
+@@ -18,5 +19,8 @@ std::unique_ptr<scheduler_policy> ocudu::create_scheduler_strategy(const schedul
+   if (std::holds_alternative<time_qos_scheduler_config>(policy_cfg)) {
+     return std::make_unique<scheduler_time_qos>(std::get<time_qos_scheduler_config>(policy_cfg), cell_cfg);
+   }
++  if (std::holds_alternative<time_risk_scheduler_config>(policy_cfg)) {
++    return std::make_unique<scheduler_time_risk>(std::get<time_risk_scheduler_config>(policy_cfg), cell_cfg);
++  }
+   return nullptr;
+ }
+diff --git a/lib/scheduler/policy/scheduler_time_risk.cpp b/lib/scheduler/policy/scheduler_time_risk.cpp
+new file mode 100644
+index 0000000..6a48593
+--- /dev/null
++++ b/lib/scheduler/policy/scheduler_time_risk.cpp
+@@ -0,0 +1,167 @@
++// SPDX-FileCopyrightText: Copyright (C) 2026 OCUDU contributors
++// SPDX-License-Identifier: BSD-3-Clause-Open-MPI
++
++#include "scheduler_time_risk.h"
++#include "../slicing/slice_ue_repository.h"
++#include <cmath>
++#include <fstream>
++#include <sstream>
++
++using namespace ocudu;
++
++scheduler_time_risk::scheduler_time_risk(const time_risk_scheduler_config& policy_cfg_,
++                                         const cell_configuration&         cell_cfg) :
++  params(policy_cfg_), dl_policy(time_qos_scheduler_config{}, cell_cfg), rate_estim(cell_cfg)
++{
++}
++
++void scheduler_time_risk::add_ue(du_ue_index_t ue_index)
++{
++  dl_policy.add_ue(ue_index);
++  // The ages of a new UE start at its creation.
++  ue_states[ue_index] = {};
++  ue_states[ue_index].last_empty_slot.fill(last_pusch_slot);
++}
++
++void scheduler_time_risk::rem_ue(du_ue_index_t ue_index)
++{
++  dl_policy.rem_ue(ue_index);
++  ue_states[ue_index] = {};
++}
++
++void scheduler_time_risk::compute_ue_dl_priorities(slot_point               pdcch_slot,
++                                                   slot_point               pdsch_slot,
++                                                   span<ue_newtx_candidate> ue_candidates)
++{
++  dl_policy.compute_ue_dl_priorities(pdcch_slot, pdsch_slot, ue_candidates);
++}
++
++void scheduler_time_risk::compute_ue_ul_priorities(slot_point               pdcch_slot,
++                                                   slot_point               pusch_slot,
++                                                   span<ue_newtx_candidate> ue_candidates)
++{
++  last_pusch_slot = pusch_slot;
++  reload_alphas();
++
++  const double p_nom = params.success_prob;
++
++  // Update the buffers of the sources. A UE without data in the C2 and video groups counts as a single source.
++  double theta = 0.0;
++  for (const ue_newtx_candidate& candidate : ue_candidates) {
++    const slice_ue& u     = *candidate.ue;
++    ue_ul_state&    state = ue_states[u.ue_index()];
++    const ue_alphas alpha = get_alphas(u.crnti());
++
++    state.pending_bytes[c2_source]    = u.pending_ul_unacked_bytes(GBR_DRB_LCG_ID);
++    state.pending_bytes[video_source] = u.pending_ul_unacked_bytes(NON_GBR_DRB_LCG_ID);
++    state.newtx_bytes                 = candidate.pending_bytes.value();
++
++    // The lower bound is solved over the sources of this slot, which makes Theta common to all of them.
++    const bool single_source = state.pending_bytes[c2_source] == 0 and state.pending_bytes[video_source] == 0;
++    if (single_source or state.pending_bytes[c2_source] > 0) {
++      theta += std::sqrt(std::max(alpha.c2, 0.0) / p_nom);
++    }
++    if (state.pending_bytes[video_source] > 0) {
++      theta += std::sqrt(std::max(alpha.video, 0.0) / p_nom);
++    }
++  }
++
++  for (ue_newtx_candidate& candidate : ue_candidates) {
++    const slice_ue& u     = *candidate.ue;
++    ue_ul_state&    state = ue_states[u.ue_index()];
++    const ue_alphas alpha = get_alphas(u.crnti());
++
++    // The channel gate removes the UEs that cannot achieve the minimum transport block size.
++    const unsigned estimated_max_tbs = rate_estim.estimate_max_ul_tbs(u.get_cc());
++    if (estimated_max_tbs == 0 or theta <= 0.0) {
++      candidate.priority = forbid_sched_priority;
++      continue;
++    }
++    const double p_eff = estimated_max_tbs >= params.min_tbs_bytes ? p_nom : 0.0;
++
++    const bool single_source = state.pending_bytes[c2_source] == 0 and state.pending_bytes[video_source] == 0;
++    double     weight        = 0.0;
++    for (unsigned src = 0; src != nof_sources; ++src) {
++      const bool has_data = state.pending_bytes[src] > 0 or (single_source and src == c2_source);
++      // The ages of all the sources advance, so that a source that receives data starts from its real age.
++      const double age_slots    = get_age(state.last_empty_slot[src], pusch_slot);
++      const double source_alpha = src == c2_source ? alpha.c2 : alpha.video;
++      if (not has_data or source_alpha <= 0.0) {
++        continue;
++      }
++      const double q_lb = std::min(params.ues_per_slot * std::sqrt(source_alpha * p_nom) / theta, p_nom);
++      weight            = std::max(weight, source_alpha / q_lb * p_eff * age_slots);
++    }
++
++    // A gated UE keeps the lowest valid priority, which serves it only when no other UE needs the slot.
++    candidate.priority = weight > 0.0 ? weight : lowest_sched_priority;
++  }
++}
++
++void scheduler_time_risk::save_dl_newtx_grants(pdu_span<dl_msg_alloc> dl_grants)
++{
++  dl_policy.save_dl_newtx_grants(dl_grants);
++}
++
++void scheduler_time_risk::save_ul_newtx_grants(pdu_span<ul_sched_info> ul_grants)
++{
++  for (const ul_sched_info& grant : ul_grants) {
++    ue_ul_state&   state     = ue_states[grant.context.ue_index];
++    const unsigned tbs_bytes = grant.pusch_cfg.tb_size_bytes.value();
++
++    const bool single_source = state.pending_bytes[c2_source] == 0 and state.pending_bytes[video_source] == 0;
++    if (single_source or tbs_bytes >= state.newtx_bytes) {
++      // The grant empties all the buffers of the UE.
++      state.last_empty_slot.fill(last_pusch_slot);
++    } else if (state.pending_bytes[c2_source] > 0 and tbs_bytes >= state.pending_bytes[c2_source]) {
++      // The UE serves its C2 buffer first, so the grant empties it and leaves video data behind.
++      state.last_empty_slot[c2_source] = last_pusch_slot;
++    }
++  }
++}
++
++void scheduler_time_risk::reload_alphas()
++{
++  const auto now = std::chrono::steady_clock::now();
++  if (last_reload != std::chrono::steady_clock::time_point{} and now - last_reload < params.alpha_reload_period) {
++    return;
++  }
++  last_reload = now;
++
++  std::ifstream file(params.alpha_file);
++  if (not file.is_open()) {
++    // A missing file keeps the previous coefficients.
++    return;
++  }
++
++  // Each line holds a C-RNTI in hexadecimal, its C2 risk coefficient and, optionally, its video risk coefficient.
++  std::unordered_map<unsigned, ue_alphas> new_alphas;
++  std::string                          line;
++  while (std::getline(file, line)) {
++    std::istringstream iss(line);
++    unsigned           rnti        = 0;
++    double             alpha_c2    = 0.0;
++    double             alpha_video = params.default_alpha_video;
++    if (iss >> std::hex >> rnti >> std::dec >> alpha_c2) {
++      // The risk coefficient of the video source is optional.
++      iss >> alpha_video;
++      new_alphas[rnti] = {alpha_c2, alpha_video};
++    }
++  }
++  alphas = std::move(new_alphas);
++}
++
++scheduler_time_risk::ue_alphas scheduler_time_risk::get_alphas(rnti_t rnti) const
++{
++  const auto it = alphas.find(static_cast<unsigned>(rnti));
++  return it != alphas.end() ? it->second : ue_alphas{params.default_alpha, params.default_alpha_video};
++}
++
++double scheduler_time_risk::get_age(slot_point& last_empty_slot, slot_point pusch_slot) const
++{
++  if (not last_empty_slot.valid()) {
++    last_empty_slot = pusch_slot;
++  }
++  // The age is at least one slot to keep the weight of a fresh source positive.
++  return std::max<int>(pusch_slot - last_empty_slot, 1);
++}
+diff --git a/lib/scheduler/policy/scheduler_time_risk.h b/lib/scheduler/policy/scheduler_time_risk.h
+new file mode 100644
+index 0000000..2d0777e
+--- /dev/null
++++ b/lib/scheduler/policy/scheduler_time_risk.h
+@@ -0,0 +1,105 @@
++// SPDX-FileCopyrightText: Copyright (C) 2026 OCUDU contributors
++// SPDX-License-Identifier: BSD-3-Clause-Open-MPI
++
++#pragma once
++
++#include "scheduler_policy.h"
++#include "scheduler_time_qos.h"
++#include "ocudu/scheduler/config/scheduler_expert_config.h"
++#include "ocudu/scheduler/config/logical_channel_group.h"
++#include <array>
++#include <chrono>
++#include <unordered_map>
++
++namespace ocudu {
++
++class cell_configuration;
++
++/// \brief Risk-aware Max-Weight UL policy.
++///
++/// Each UE holds up to two UL sources, a C2 source on the GBR DRB logical channel group and a video source on the
++/// non-GBR one. The weight of a source is W = V * p * h, where h is the age of the source, p is the channel-gated
++/// success probability of the UE and V = alpha / q_lb. The lower-bound service rate
++/// q_lb = min(K * sqrt(alpha * p_nom) / Theta, p_nom), with Theta = sum_s sqrt(alpha_s / p_nom), is solved every slot
++/// over the sources of the UL candidates that hold data. The UL priority of a UE is the highest weight of its sources.
++///
++/// The age of a source counts the slots since a grant last emptied its buffer. The grant of a UE serves its C2 buffer
++/// first, as the logical channel prioritization of the UE does. A UE without data in either group counts as a single
++/// source whose age restarts at every grant.
++///
++/// An external file provides the risk coefficients of each UE.
++///
++/// DL scheduling is delegated to the QoS-aware policy.
++class scheduler_time_risk final : public scheduler_policy
++{
++public:
++  scheduler_time_risk(const time_risk_scheduler_config& policy_cfg_, const cell_configuration& cell_cfg);
++
++  void add_ue(du_ue_index_t ue_index) override;
++
++  void rem_ue(du_ue_index_t ue_index) override;
++
++  void compute_ue_dl_priorities(slot_point               pdcch_slot,
++                                slot_point               pdsch_slot,
++                                span<ue_newtx_candidate> ue_candidates) override;
++
++  void compute_ue_ul_priorities(slot_point               pdcch_slot,
++                                slot_point               pusch_slot,
++                                span<ue_newtx_candidate> ue_candidates) override;
++
++  void save_dl_newtx_grants(pdu_span<dl_msg_alloc> dl_grants) override;
++
++  void save_ul_newtx_grants(pdu_span<ul_sched_info> ul_grants) override;
++
++private:
++  /// Reloads the risk coefficients from the file when the reload period elapses.
++  void reload_alphas();
++
++  /// UL sources of a UE.
++  enum source_index : unsigned { c2_source = 0, video_source = 1, nof_sources = 2 };
++
++  /// Risk coefficients of a UE.
++  struct ue_alphas {
++    double c2;
++    double video;
++  };
++
++  /// UL state of a UE.
++  struct ue_ul_state {
++    /// PUSCH slot at which a grant last emptied the buffer of each source.
++    std::array<slot_point, nof_sources> last_empty_slot;
++    /// Pending bytes of each source at the last priority computation.
++    std::array<unsigned, nof_sources> pending_bytes{};
++    /// Pending new transmission bytes of the UE at the last priority computation.
++    unsigned newtx_bytes = 0;
++  };
++
++  /// Returns the risk coefficients of the given UE.
++  ue_alphas get_alphas(rnti_t rnti) const;
++
++  /// Returns the age in slots of a source and starts it when the source is new.
++  double get_age(slot_point& last_empty_slot, slot_point pusch_slot) const;
++
++  /// Policy parameters.
++  const time_risk_scheduler_config params;
++
++  /// Policy that schedules the DL.
++  scheduler_time_qos dl_policy;
++
++  /// Rate estimator that provides the UL channel gate.
++  rate_estimator rate_estim;
++
++  /// Risk coefficients of each UE, indexed by C-RNTI.
++  std::unordered_map<unsigned, ue_alphas> alphas;
++
++  /// Time of the last risk coefficient reload.
++  std::chrono::steady_clock::time_point last_reload{};
++
++  /// UL state of each UE.
++  std::array<ue_ul_state, MAX_NOF_DU_UES> ue_states{};
++
++  /// PUSCH slot of the last UL priority computation.
++  slot_point last_pusch_slot;
++};
++
++} // namespace ocudu
